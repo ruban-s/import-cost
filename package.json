@@ -2,7 +2,7 @@
   "name": "import-cost-monorepo",
   "private": true,
   "scripts": {
-    "prepare": "husky install",
+    "prepare": "husky",
     "lint": "npx @biomejs/biome check .",
     "lint:fix": "npx @biomejs/biome check --write .",
     "test": "npm run test --workspaces --if-present",
@@ -10,8 +10,8 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.10",
-    "husky": "^7.0.4",
-    "lint-staged": "^12.1.2"
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0"
   },
   "workspaces": [
     "packages/*"
