@@ -4,6 +4,7 @@ const logger = require('./logger');
 
 const decorations = {};
 const decorationType = window.createTextEditorDecorationType({});
+let activeEditor = window.activeTextEditor;
 
 function setDecorations(fileName, packages) {
   decorations[fileName] = {};
@@ -105,37 +106,52 @@ function decoration(line, packageInfo) {
   };
 }
 
-let decorationsDebounce;
-function flushDecorationsDebounced(fileName) {
-  clearTimeout(decorationsDebounce);
-  decorationsDebounce = setTimeout(() => flushDecorations(fileName), 10);
-}
-
-function flushDecorations(fileName) {
-  const arr = {};
+function buildDecorationArray(fileName) {
+  if (!decorations[fileName]) return [];
+  const arr = [];
   const { showCalculatingDecoration } =
     workspace.getConfiguration('importCost');
   Object.entries(decorations[fileName]).forEach(([line, packageInfo]) => {
     if (packageInfo.size === undefined && showCalculatingDecoration) {
-      arr[line] = decoration(line, undefined);
+      arr.push(decoration(line, undefined));
     } else if (packageInfo.size > 0) {
-      arr[line] = decoration(line, packageInfo);
+      arr.push(decoration(line, packageInfo));
     }
   });
+  return arr;
+}
 
-  const log = Object.entries(arr)
-    .map(([line, decoration]) => {
-      const message = decoration.renderOptions.after.contentText;
-      return `${fileName}, ${line}, ${message}`;
-    })
-    .join('\n');
-  logger.log(`Setting decorations:\n${log}`);
+let decorationsDebounce;
+function flushDecorationsDebounced(fileName) {
+  clearTimeout(decorationsDebounce);
+  decorationsDebounce = setTimeout(() => applyDecorations(fileName), 10);
+}
 
+function applyDecorations(fileName) {
+  const arr = buildDecorationArray(fileName);
+  // Apply to the active editor directly (most reliable)
+  if (activeEditor && activeEditor.document.fileName === fileName) {
+    activeEditor.setDecorations(decorationType, arr);
+  }
+  // Also apply to any other visible editors showing this file (e.g. split view)
   window.visibleTextEditors
-    .filter(editor => editor.document.fileName === fileName)
+    .filter(
+      editor =>
+        editor !== activeEditor &&
+        editor.document.fileName === fileName,
+    )
     .forEach(editor => {
-      editor.setDecorations(decorationType, Object.values(arr));
+      editor.setDecorations(decorationType, arr);
     });
+}
+
+function onDidChangeActiveEditor(editor) {
+  activeEditor = editor;
+  if (editor) {
+    // Re-apply cached decorations immediately to the new active editor
+    const arr = buildDecorationArray(editor.document.fileName);
+    editor.setDecorations(decorationType, arr);
+  }
 }
 
 function clearDecorations() {
@@ -148,4 +164,5 @@ module.exports = {
   setDecorations,
   calculated,
   clearDecorations,
+  onDidChangeActiveEditor,
 };
