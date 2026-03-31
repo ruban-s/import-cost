@@ -1,7 +1,7 @@
 {
-  "name": "vscode-import-cost",
-  "displayName": "Import Cost",
-  "description": "Display import/require package size in the editor",
+  "name": "fast-import-cost",
+  "displayName": "Import Cost Fast",
+  "description": "Display import/require package size in the editor — powered by esbuild & SWC",
   "license": "MIT",
   "version": "4.0.0",
   "publisher": "ruban-s",
@@ -25,7 +25,9 @@
     "require",
     "size",
     "weight",
-    "webpack"
+    "esbuild",
+    "swc",
+    "fast"
   ],
   "contributes": {
     "configuration": {
