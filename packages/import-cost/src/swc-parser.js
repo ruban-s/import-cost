@@ -6,7 +6,7 @@ function getPackages(fileName, source, language, lineOffset = 0) {
   const ast = parse(source, language);
 
   function getLine(span) {
-    return source.substring(0, span.end - 1).split('\n').length + lineOffset;
+    return source.substring(0, span.start - 1).split('\n').length + lineOffset;
   }
 
   for (const node of ast.body) {
