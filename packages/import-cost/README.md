@@ -1,10 +1,12 @@
-# import-cost ![Build Status](https://github.com/wix/import-cost/workflows/build/badge.svg)
+# import-cost
 
-This node module comes to help people who would like to develop extensions similar to [Import Cost VSCode extension](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost) for additional IDE's such as Atom, WebStorm, Sublime, Vim etc.
+> Forked from [wix/import-cost](https://github.com/wix/import-cost) and rebuilt for performance.
 
-Use freely to implement extensions for other IDE (or contribute them to this repository)
+This node module helps developers build extensions that display import/require bundle sizes in editors. Uses **esbuild** for bundling and **SWC** for parsing.
 
-You can see good reference for how to work with this module in the [VSCode extension implementation](https://github.com/wix/import-cost/blob/master/packages/vscode-import-cost/src/extension.ts)
+Use freely to implement extensions for other IDEs (or contribute them to this repository).
+
+See the [VSCode extension implementation](https://github.com/ruban-s/import-cost/blob/master/packages/vscode-import-cost/src/extension.js) for a reference.
 
 ## How to use
 

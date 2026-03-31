@@ -15,8 +15,8 @@ function whenDone(emitter, pkg) {
 async function importCost(content, language = 'javascript') {
   const doc = await workspace.openTextDocument({ content, language });
   await window.showTextDocument(doc);
-  await extensions.getExtension('wix.vscode-import-cost').activate();
-  return extensions.getExtension('wix.vscode-import-cost').exports.logger;
+  await extensions.getExtension('ruban-s.fast-import-cost').activate();
+  return extensions.getExtension('ruban-s.fast-import-cost').exports.logger;
 }
 
 async function verify(

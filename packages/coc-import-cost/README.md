@@ -1,7 +1,9 @@
-# Import Cost coc.nvim Extension ![Build Status](https://github.com/wix/import-cost/workflows/build/badge.svg)
+# Import Cost Fast — coc.nvim Extension
+
+> Forked from [wix/import-cost](https://github.com/wix/import-cost) and rebuilt for performance.
 
 This extension will display inline in the editor the size of the imported package.
-The extension utilizes webpack with babili-webpack-plugin in order to detect the imported size.
+The extension utilizes esbuild and SWC in order to detect the imported size.
 ![Example Image](images/coc-import-cost.gif)
 
 ## Requirements
