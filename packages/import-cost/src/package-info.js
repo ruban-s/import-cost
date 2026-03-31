@@ -1,18 +1,10 @@
 const os = require('os');
 const path = require('path');
-const workerFarm = require('worker-farm');
 const { URI } = require('vscode-uri');
 const fsAdapter = require('native-fs-adapter');
 const { debouncePromise, DebounceError } = require('./debounce-promise.js');
 const { version: icVersion } = require('../package.json');
 const { calcSize } = require('./bundler.js');
-
-let workers = null;
-function initWorkers(maxCallTime = Infinity) {
-  const fileName = path.join(__dirname, 'webpack.js');
-  workers = workers || workerFarm({ maxCallTime }, fileName, ['calcSize']);
-  return workers.calcSize;
-}
 
 let sizeCache = {};
 const failedSize = { size: 0, gzip: 0 };
@@ -41,9 +33,10 @@ async function getSize(pkg, config) {
 
 function calcPackageSize(packageInfo, config) {
   const key = `${packageInfo.fileName}#${packageInfo.line}`;
-  const fn = config.concurrent ? initWorkers(config.maxCallTime) : calcSize;
   return debouncePromise(key, (resolve, reject) => {
-    fn(packageInfo, config, (e, result) => (e ? reject(e) : resolve(result)));
+    calcSize(packageInfo, config, (e, result) =>
+      e ? reject(e) : resolve(result),
+    );
   });
 }
 
@@ -88,10 +81,7 @@ async function saveSizeCache() {
 }
 
 function cleanup() {
-  if (workers) {
-    workerFarm.end(workers);
-    workers = null;
-  }
+  // no-op: esbuild runs in-process, no workers to clean up
 }
 
 module.exports = {
