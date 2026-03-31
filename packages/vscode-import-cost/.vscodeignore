@@ -2,4 +2,6 @@
 .vscode-test/**
 .vscode-test-web/**
 test/**
+src/**
+build.mjs
 .gitignore
