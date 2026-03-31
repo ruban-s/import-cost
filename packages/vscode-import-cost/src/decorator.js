@@ -112,7 +112,7 @@ function flushDecorationsDebounced(fileName) {
 }
 
 function flushDecorations(fileName) {
-  let arr = {};
+  const arr = {};
   const { showCalculatingDecoration } =
     workspace.getConfiguration('importCost');
   Object.entries(decorations[fileName]).forEach(([line, packageInfo]) => {

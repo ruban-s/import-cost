@@ -99,7 +99,7 @@ function compileImportString(node) {
             importSpecifiers += ', ';
             return undefined;
           } else {
-            const result = importSpecifiers + '}';
+            const result = `${importSpecifiers}}`;
             importSpecifiers = undefined;
             return result;
           }

@@ -23,7 +23,7 @@ function activate(context) {
       }),
     );
   } catch (e) {
-    logger.log('wrapping error: ' + e);
+    logger.log(`wrapping error: ${e}`);
   }
   return { logger };
 }
@@ -34,7 +34,7 @@ function deactivate() {
   clearDecorations();
 }
 
-let emitters = {};
+const emitters = {};
 async function processActiveFile(document) {
   if (isActive && document && language(document)) {
     const { fileName } = document;
