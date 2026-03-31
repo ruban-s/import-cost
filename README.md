@@ -1,8 +1,9 @@
-# Import Cost ![Build Status](https://github.com/wix/import-cost/workflows/build/badge.svg) [![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/badges/StandWithUkraine.svg)](https://www.wix.com/stands-with-ukraine)
-[![](https://vsmarketplacebadge.apphb.com/version/wix.vscode-import-cost.svg)](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost) [![](https://vsmarketplacebadge.apphb.com/installs/wix.vscode-import-cost.svg)](https://marketplace.visualstudio.com/items?itemName=wix.vscode-import-cost)
+# Import Cost
+
+> Forked from [wix/import-cost](https://github.com/wix/import-cost) and optimized for performance.
 
 This extension will display inline in the editor the size of the imported package.
-The extension utilizes webpack in order to detect the imported size.
+The extension utilizes esbuild in order to detect the imported size.
 
 ![Example Image](https://citw.dev/_next/image?url=%2Fposts%2Fimport-cost%2F1quov3TFpgG2ur7myCLGtsA.gif&w=1080&q=75)
 
