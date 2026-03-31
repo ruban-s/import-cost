@@ -62,7 +62,7 @@ async function readSizeCache() {
 async function saveSizeCache() {
   try {
     const keys = Object.keys(sizeCache).filter(key => {
-      const size = sizeCache[key] && sizeCache[key].size;
+      const size = sizeCache[key]?.size;
       return typeof size === 'number' && size > 0;
     });
     const cache = keys.reduce(
@@ -75,7 +75,7 @@ async function saveSizeCache() {
         Buffer.from(JSON.stringify(cache, null, 2), 'utf8'),
       );
     }
-  } catch (e) {
+  } catch (_e) {
     // silent error
   }
 }
