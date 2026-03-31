@@ -1,0 +1,23 @@
+name: build
+on: [push]
+jobs:
+  test:
+    env:
+      CI: true
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+    - uses: actions/checkout@v1
+    - id: nvm
+      run: echo ::set-output name=NVMRC::$(cat .nvmrc)
+    - uses: actions/setup-node@v1
+      with:
+        node-version: '${{ steps.nvm.outputs.NVMRC }}'
+    - run: npm install
+    - run: npm run lint
+    - run: xvfb-run -a npm run test
+      if: matrix.os == 'ubuntu-latest'
+    - run: npm run test
+      if: matrix.os != 'ubuntu-latest'

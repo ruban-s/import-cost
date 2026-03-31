@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "outDir": "lib",
+    "target": "es2018",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "noImplicitThis": true,
+    "importHelpers": true,
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "declaration": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "strictNullChecks": false,
+    "strictFunctionTypes": false,
+    "allowUnreachableCode": true,
+    "allowUnusedLabels": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitAny": false,
+    "noImplicitReturns": false,
+    "skipLibCheck": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "strictPropertyInitialization": false,
+    "lib": [
+      "es2018"
+    ],
+    "plugins": []
+  },
+  "include": [
+    "src"
+  ],
+  "exclude": [
+    "node_modules",
+  ]
+}
