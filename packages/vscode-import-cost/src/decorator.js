@@ -129,15 +129,7 @@ function flushDecorationsDebounced(fileName) {
 
 function applyDecorations(fileName) {
   const arr = buildDecorationArray(fileName);
-  // Log the exact positions being applied
-  arr.forEach(d => {
-    const line = d.range.start.line;
-    const text = d.renderOptions?.after?.contentText || '';
-    console.log(`[import-cost] decoration: line=${line}, text="${text}", file=${fileName}`);
-  });
-  // Apply to the active editor directly (most reliable)
   if (activeEditor && activeEditor.document.fileName === fileName) {
-    console.log(`[import-cost] applying ${arr.length} decorations to active editor: ${fileName}`);
     activeEditor.setDecorations(decorationType, arr);
   }
   // Also apply to any other visible editors showing this file (e.g. split view)
@@ -157,10 +149,6 @@ function onDidChangeActiveEditor(editor) {
   if (editor) {
     const fileName = editor.document.fileName;
     const arr = buildDecorationArray(fileName);
-    console.log(`[import-cost] tab switch: re-applying ${arr.length} cached decorations to ${fileName}`);
-    arr.forEach(d => {
-      console.log(`[import-cost]   line=${d.range.start.line}, text="${d.renderOptions?.after?.contentText || ''}"`);
-    });
     editor.setDecorations(decorationType, arr);
   }
 }
@@ -171,9 +159,14 @@ function clearDecorations() {
   });
 }
 
+function hasDecorations(fileName) {
+  return decorations[fileName] && Object.keys(decorations[fileName]).length > 0;
+}
+
 module.exports = {
   setDecorations,
   calculated,
   clearDecorations,
   onDidChangeActiveEditor,
+  hasDecorations,
 };
