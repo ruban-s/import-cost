@@ -4,17 +4,14 @@ const { Lang } = require('./langs.js');
 function getPackages(fileName, source, language, lineOffset = 0) {
   const packages = [];
   const ast = parse(source, language);
-
-  function getLine(span) {
-    return source.substring(0, span.start - 1).split('\n').length + lineOffset;
-  }
+  const lines = source.split('\n');
 
   for (const node of ast.body) {
     if (node.type === 'ImportDeclaration' && !node.typeOnly) {
       packages.push({
         fileName,
         name: node.source.value,
-        line: getLine(node.span),
+        line: findImportLine(lines, node.source.value, lineOffset),
         string: compileImportString(node),
       });
     }
@@ -23,23 +20,62 @@ function getPackages(fileName, source, language, lineOffset = 0) {
   walkNode(ast, node => {
     if (node.type !== 'CallExpression') return;
     if (node.callee.type === 'Identifier' && node.callee.value === 'require') {
+      const name = getPackageName(node);
       packages.push({
         fileName,
-        name: getPackageName(node),
-        line: getLine(node.span),
+        name,
+        line: findRequireLine(lines, name, lineOffset),
         string: compileRequireString(node),
       });
     } else if (node.callee.type === 'Import') {
+      const name = getPackageName(node);
       packages.push({
         fileName,
-        name: getPackageName(node),
-        line: getLine(node.span),
+        name,
+        line: findDynamicImportLine(lines, name, lineOffset),
         string: compileImportExpressionString(node),
       });
     }
   });
 
   return packages;
+}
+
+function findImportLine(lines, packageName, lineOffset) {
+  for (let i = 0; i < lines.length; i++) {
+    if (
+      lines[i].includes(`from '${packageName}'`) ||
+      lines[i].includes(`from "${packageName}"`)
+    ) {
+      return i + 1 + lineOffset;
+    }
+  }
+  return 1 + lineOffset;
+}
+
+function findRequireLine(lines, packageName, lineOffset) {
+  for (let i = 0; i < lines.length; i++) {
+    if (
+      lines[i].includes(`require('${packageName}')`) ||
+      lines[i].includes(`require("${packageName}")`) ||
+      lines[i].includes(`require(\`${packageName}\`)`)
+    ) {
+      return i + 1 + lineOffset;
+    }
+  }
+  return 1 + lineOffset;
+}
+
+function findDynamicImportLine(lines, packageName, lineOffset) {
+  for (let i = 0; i < lines.length; i++) {
+    if (
+      lines[i].includes(`import('${packageName}')`) ||
+      lines[i].includes(`import("${packageName}")`)
+    ) {
+      return i + 1 + lineOffset;
+    }
+  }
+  return 1 + lineOffset;
 }
 
 function parse(source, language) {
@@ -57,7 +93,7 @@ function walkNode(node, visitor) {
   for (const key of Object.keys(node)) {
     const val = node[key];
     if (Array.isArray(val)) {
-      val.forEach(child => walkNode(child, visitor));
+      for (const child of val) walkNode(child, visitor);
     } else if (val && typeof val === 'object' && val.type) {
       walkNode(val, visitor);
     }

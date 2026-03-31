@@ -85,7 +85,6 @@ async function calcSize(packageInfo, config, callback) {
     const gzip = gzipSync(output).length;
     callback(null, { size, gzip });
   } catch (e) {
-    console.error('[import-cost] calcSize error:', packageInfo.name, e.message || e);
     callback(e);
   }
 }

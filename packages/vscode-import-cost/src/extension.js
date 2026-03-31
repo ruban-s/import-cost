@@ -5,26 +5,23 @@ const {
   setDecorations,
   clearDecorations,
   onDidChangeActiveEditor,
+  hasDecorations,
 } = require('./decorator');
 const logger = require('./logger');
 
 let isActive = true;
 const emitters = {};
-const processedFiles = new Set();
 
 function activate(context) {
   try {
     logger.log('starting...');
     context.subscriptions.push(
-      workspace.onDidChangeTextDocument(ev => {
-        processedFiles.delete(ev.document.fileName);
-        processActiveFile(ev.document);
-      }),
+      workspace.onDidChangeTextDocument(ev => processActiveFile(ev.document)),
       window.onDidChangeActiveTextEditor(editor => {
         // Update the decorator's active editor reference and re-apply cached decorations
         onDidChangeActiveEditor(editor);
-        if (editor?.document && !processedFiles.has(editor.document.fileName)) {
-          // Small delay to ensure editor is fully rendered before processing
+        if (editor?.document && !hasDecorations(editor.document.fileName)) {
+          // Only scan if this file has never been processed
           setTimeout(() => processActiveFile(editor.document), 100);
         }
       }),
@@ -63,10 +60,7 @@ async function processActiveFile(document) {
     emitter.on('error', e => logger.log(`importCost error: ${e}`));
     emitter.on('start', packages => setDecorations(fileName, packages));
     emitter.on('calculated', packageInfo => calculated(fileName, packageInfo));
-    emitter.on('done', packages => {
-      setDecorations(fileName, packages);
-      processedFiles.add(fileName);
-    });
+    emitter.on('done', packages => setDecorations(fileName, packages));
     emitter.on('log', log => logger.log(log));
     emitters[fileName] = emitter;
   }
