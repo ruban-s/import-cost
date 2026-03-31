@@ -3,7 +3,7 @@
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor — powered by esbuild & SWC",
   "license": "MIT",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "publisher": "ruban-s",
   "main": "./dist/extension.electron.js",
   "engines": {
