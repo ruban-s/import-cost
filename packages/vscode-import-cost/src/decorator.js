@@ -1,5 +1,5 @@
 const { workspace, window, Range, Position } = require('vscode');
-const fileSize = require('filesize');
+const { filesize: fileSize } = require('filesize');
 const logger = require('./logger');
 
 const decorations = {};
@@ -47,8 +47,8 @@ function getDecorationMessage(packageInfo) {
   if (!packageInfo) {
     return text('Calculating...');
   }
-  const size = fileSize(packageInfo.size, { unix: true });
-  const gzip = fileSize(packageInfo.gzip, { unix: true });
+  const size = fileSize(packageInfo.size, { standard: 'jedec' });
+  const gzip = fileSize(packageInfo.gzip, { standard: 'jedec' });
   if (configuration.bundleSizeDecoration === 'minified') {
     return text(`${size}`);
   } else if (configuration.bundleSizeDecoration === 'gzipped') {

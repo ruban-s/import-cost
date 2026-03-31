@@ -1,11 +1,17 @@
-import {importCost, JAVASCRIPT, TYPESCRIPT} from 'import-cost';
+import {importCost, Lang} from 'import-cost';
 import {workspace, CodeLensProvider} from 'coc.nvim';
 import {
   CancellationToken,
   CodeLens,
   TextDocument
 } from 'vscode-languageserver-protocol';
-import fileSize from 'filesize';
+let fileSize: any;
+async function getFileSize() {
+  if (!fileSize) {
+    fileSize = (await import('filesize')).filesize;
+  }
+  return fileSize;
+}
 import logger from './logger';
 
 function language(doc) {
@@ -23,27 +29,28 @@ function language(doc) {
     languageId === 'typescriptreact' ||
     typescriptRegex.test(fileName)
   ) {
-    return TYPESCRIPT;
+    return Lang.TYPESCRIPT;
   } else if (
     languageId === 'javascript' ||
     languageId === 'javascriptreact' ||
     javascriptRegex.test(fileName)
   ) {
-    return JAVASCRIPT;
+    return Lang.JAVASCRIPT;
   } else {
     return undefined;
   }
 }
 
-function getDecorationMessage(packageInfo) {
+async function getDecorationMessage(packageInfo) {
   if (packageInfo.size <= 0) {
     return '';
   }
 
+  const fileSizeFn = await getFileSize();
   let decorationMessage;
   const configuration = workspace.getConfiguration('importCost');
-  const size = fileSize(packageInfo.size, {unix: true});
-  const gzip = fileSize(packageInfo.gzip, {unix: true});
+  const size = fileSizeFn(packageInfo.size, {standard: 'jedec'});
+  const gzip = fileSizeFn(packageInfo.gzip, {standard: 'jedec'});
   if (configuration.bundleSizeDecoration === 'both') {
     decorationMessage = `${size} (gzipped: ${gzip})`;
   } else if (configuration.bundleSizeDecoration === 'minified') {
@@ -86,14 +93,16 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
           {concurrent: true, maxCallTime: timeout}
         );
 
-        emitter.on('done', packages => {
+        emitter.on('done', async packages => {
           try {
-            const imports = packages.filter(pkg => pkg.size > 0).map(pkg => {
-              logger.log(
-                `done with ${pkg.name}: ${JSON.stringify(pkg, null, 2)}`
-              );
-              return calculated(pkg);
-            });
+            const imports = await Promise.all(
+              packages.filter(pkg => pkg.size > 0).map(async pkg => {
+                logger.log(
+                  `done with ${pkg.name}: ${JSON.stringify(pkg, null, 2)}`
+                );
+                return calculated(pkg);
+              })
+            );
 
             logger.log(`resolving promise with: ${JSON.stringify({imports}, null, 2)}`);
             resolve(imports);
@@ -121,8 +130,8 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
   }
 }
 
-function calculated(packageInfo) {
-  const decorationMessage = getDecorationMessage(packageInfo);
+async function calculated(packageInfo) {
+  const decorationMessage = await getDecorationMessage(packageInfo);
 
   return makeCodeLens(decorationMessage, packageInfo);
 }
