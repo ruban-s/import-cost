@@ -15,7 +15,17 @@ await esbuild.build({
   format: 'cjs',
   minify: true,
   sourcemap: true,
-  external: ['vscode', 'esbuild', '@swc/core', '@swc/wasm'],
+  external: [
+    'vscode',
+    'esbuild',
+    '@swc/core',
+    '@swc/wasm',
+    'worker-farm',
+    'terser-webpack-plugin',
+    'webpack',
+    'jest-worker',
+    'uglify-js',
+  ],
   loader: { '.node': 'empty' },
 });
 
