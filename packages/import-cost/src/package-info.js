@@ -5,7 +5,7 @@ const { URI } = require('vscode-uri');
 const fsAdapter = require('native-fs-adapter');
 const { debouncePromise, DebounceError } = require('./debounce-promise.js');
 const { version: icVersion } = require('../package.json');
-const { calcSize } = require('./webpack.js');
+const { calcSize } = require('./bundler.js');
 
 let workers = null;
 function initWorkers(maxCallTime = Infinity) {
