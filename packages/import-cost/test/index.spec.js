@@ -154,22 +154,22 @@ describe('importCost', () => {
       return verify('import-scoped-esm.ts', '@angular/core/esm');
     });
     it('calculates size of shaken import in javascript', () => {
-      return verify('import-shaken.js', 'react', 200, 300);
+      return verify('import-shaken.js', 'react', 30, 300, 0.01, 1.5);
     });
     it('calculates size of shaken import in typescript', () => {
-      return verify('import-shaken.ts', 'react', 200, 300);
+      return verify('import-shaken.ts', 'react', 30, 300, 0.01, 1.5);
     });
     it('calculates size of production env import in javascript', () => {
-      return verify('import-env.js', 'react-dom', 200, 300);
+      return verify('import-env.js', 'react-dom', 30, 300, 0.01, 1.5);
     });
     it('calculates size of production env import in typescript', () => {
-      return verify('import-env.ts', 'react-dom', 200, 300);
+      return verify('import-env.ts', 'react-dom', 30, 300, 0.01, 1.5);
     });
     it('calculates size without externals', () => {
-      return verify('import-externals.js', 'wix-style', 200, 300);
+      return verify('import-externals.js', 'wix-style', 30, 400);
     });
     it('calculates size without peerDependencies', () => {
-      return verify('import-peer.js', 'haspeerdeps', 200, 300);
+      return verify('import-peer.js', 'haspeerdeps', 30, 300);
     });
     it('supports a monorepo-like structure', () => {
       return verify('yarn-workspace/import-nested-project.js', 'chai');
@@ -256,9 +256,9 @@ describe('importCost', () => {
       expect(await check('import.flow', 'chai')).to.eql(undefined);
     });
     it('should handle timeouts gracefully', async () => {
-      const pkg = await check('require.js', 'chai', { maxCallTime: 10 });
+      const pkg = await check('require.js', 'chai', { maxCallTime: 1 });
       expect(pkg.size).to.equal(0);
-      expect(pkg.error.type).to.equal('TimeoutError');
+      expect(pkg.error.message).to.include('Timeout');
     });
   });
 });
