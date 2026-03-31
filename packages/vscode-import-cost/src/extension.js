@@ -7,6 +7,13 @@ const {
   onDidChangeActiveEditor,
   hasDecorations,
 } = require('./decorator');
+const {
+  isPackageJson,
+  processPackageJson,
+  onEditorChange: onPackageJsonEditorChange,
+  clearPackageJsonDecorations,
+  hasPackageJsonDecorations,
+} = require('./package-json-cost');
 const logger = require('./logger');
 
 let isActive = true;
@@ -16,26 +23,49 @@ function activate(context) {
   try {
     logger.log('starting...');
     context.subscriptions.push(
-      workspace.onDidChangeTextDocument(ev => processActiveFile(ev.document)),
+      workspace.onDidChangeTextDocument(ev => {
+        if (isPackageJson(ev.document)) {
+          processPackageJson(ev.document);
+        } else {
+          processActiveFile(ev.document);
+        }
+      }),
       window.onDidChangeActiveTextEditor(editor => {
-        // Update the decorator's active editor reference and re-apply cached decorations
-        onDidChangeActiveEditor(editor);
-        if (editor?.document && !hasDecorations(editor.document.fileName)) {
-          // Only scan if this file has never been processed
-          setTimeout(() => processActiveFile(editor.document), 100);
+        if (!editor?.document) return;
+        if (isPackageJson(editor.document)) {
+          onPackageJsonEditorChange(editor);
+          if (!hasPackageJsonDecorations(editor.document.fileName)) {
+            processPackageJson(editor.document);
+          }
+        } else {
+          onDidChangeActiveEditor(editor);
+          if (!hasDecorations(editor.document.fileName)) {
+            setTimeout(() => processActiveFile(editor.document), 100);
+          }
         }
       }),
       commands.registerCommand('importCost.toggle', () => {
         isActive = !isActive;
         if (isActive) {
-          processActiveFile(window.activeTextEditor?.document);
+          const doc = window.activeTextEditor?.document;
+          if (isPackageJson(doc)) {
+            processPackageJson(doc);
+          } else {
+            processActiveFile(doc);
+          }
         } else {
           deactivate();
         }
       }),
     );
-    // Delay initial processing to ensure editor is fully rendered
-    setTimeout(() => processActiveFile(window.activeTextEditor?.document), 200);
+    setTimeout(() => {
+      const doc = window.activeTextEditor?.document;
+      if (isPackageJson(doc)) {
+        processPackageJson(doc);
+      } else {
+        processActiveFile(doc);
+      }
+    }, 200);
   } catch (e) {
     logger.log(`wrapping error: ${e}`);
   }
@@ -46,6 +76,7 @@ function deactivate() {
   cleanup();
   logger.dispose();
   clearDecorations();
+  clearPackageJsonDecorations();
 }
 
 async function processActiveFile(document) {
