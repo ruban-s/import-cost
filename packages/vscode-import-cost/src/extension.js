@@ -1,13 +1,3 @@
-if (typeof self !== 'undefined') {
-  /* global self */
-  //hacks for global scope of web worker
-  self.setImmediate = self.setImmediate || (fn => setTimeout(fn, 0));
-  self.Buffer = self.Buffer || require('buffer').Buffer;
-  self.process = require('process/browser');
-  self.process.hrtime = require('browser-process-hrtime');
-  self.process.stderr = {};
-}
-
 const { window, workspace, commands } = require('vscode');
 const { importCost, cleanup, Lang } = require('import-cost');
 const { calculated, setDecorations, clearDecorations } = require('./decorator');
