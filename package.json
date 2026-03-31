@@ -18,5 +18,11 @@
   ],
   "lint-staged": {
     "*.js": "npx @biomejs/biome check --write"
+  },
+  "overrides": {
+    "mocha": {
+      "serialize-javascript": "^7.0.5",
+      "diff": "^8.0.3"
+    }
   }
 }
