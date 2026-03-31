@@ -20,13 +20,33 @@ await esbuild.build({
     'esbuild',
     '@swc/core',
     '@swc/wasm',
-    'worker-farm',
-    'terser-webpack-plugin',
-    'webpack',
-    'jest-worker',
-    'uglify-js',
   ],
   loader: { '.node': 'empty' },
+  plugins: [
+    {
+      name: 'stub-unused-deps',
+      setup(build) {
+        // These are transitive deps in node_modules that get pulled in
+        // but are never actually called at runtime
+        const stubs = [
+          'worker-farm',
+          'webpack',
+          'terser-webpack-plugin',
+          'jest-worker',
+          'uglify-js',
+        ];
+        const filter = new RegExp(`^(${stubs.join('|')})$`);
+        build.onResolve({ filter }, () => ({
+          path: 'stub',
+          namespace: 'stub-ns',
+        }));
+        build.onLoad({ filter: /.*/, namespace: 'stub-ns' }, () => ({
+          contents: 'module.exports = {};',
+          loader: 'js',
+        }));
+      },
+    },
+  ],
 });
 
 // Copy native dependencies into dist/node_modules so they ship with the VSIX
