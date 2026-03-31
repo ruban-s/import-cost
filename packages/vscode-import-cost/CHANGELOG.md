@@ -1,5 +1,11 @@
 # Changes
 
+## 4.1.1
+
+- Update all repository URLs to forked repo
+- Update extension branding and icon
+- Update all package READMEs with fork attribution
+
 ## 4.1.0
 
 - Show bundle sizes for dependencies in `package.json`
