@@ -1,12 +1,10 @@
-const cheerio = require('cheerio');
 const { getPackages: getPackagesFromJS } = require('./babel-parser.js');
 const { Lang } = require('./langs.js');
 
 function extractScriptFromHtml(html) {
   try {
-    const $ = cheerio.load(html);
-    const code = $('script').html();
-    return code;
+    const match = html.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
+    return match ? match[1] : '';
   } catch (e) {
     console.error(`ERR`, e);
     return '';
