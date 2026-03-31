@@ -107,9 +107,9 @@
     "color": "#1C78C0",
     "theme": "dark"
   },
-  "homepage": "https://github.com/wix/import-cost/blob/master/packages/coc-import-cost/README.md",
+  "homepage": "https://github.com/ruban-s/import-cost/blob/master/packages/coc-import-cost/README.md",
   "repository": {
     "type": "git",
-    "url": "https://github.com/wix/import-cost.git"
+    "url": "https://github.com/ruban-s/import-cost.git"
   }
 }
