@@ -16,7 +16,7 @@
   "devDependencies": {
     "chai": "^4.5.0",
     "chai-as-promised": "^7.1.2",
-    "mocha": "^11.7.5",
+    "mocha": "^11.3.0",
     "native-fs-adapter": "^1.0.0",
     "vscode-uri": "^3.1.0"
   },
