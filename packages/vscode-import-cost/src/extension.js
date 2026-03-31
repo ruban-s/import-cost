@@ -24,7 +24,8 @@ function activate(context) {
         // Update the decorator's active editor reference and re-apply cached decorations
         onDidChangeActiveEditor(editor);
         if (editor?.document && !processedFiles.has(editor.document.fileName)) {
-          processActiveFile(editor.document);
+          // Small delay to ensure editor is fully rendered before processing
+          setTimeout(() => processActiveFile(editor.document), 100);
         }
       }),
       commands.registerCommand('importCost.toggle', () => {
@@ -36,7 +37,8 @@ function activate(context) {
         }
       }),
     );
-    processActiveFile(window.activeTextEditor?.document);
+    // Delay initial processing to ensure editor is fully rendered
+    setTimeout(() => processActiveFile(window.activeTextEditor?.document), 200);
   } catch (e) {
     logger.log(`wrapping error: ${e}`);
   }
