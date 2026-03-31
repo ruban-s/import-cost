@@ -4,7 +4,7 @@
   "description": "Display import/require package size in the editor",
   "license": "MIT",
   "version": "2.0.0",
-  "publisher": "wix",
+  "publisher": "ruban-s",
   "files": [
     "src",
     "lib"

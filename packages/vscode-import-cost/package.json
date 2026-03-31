@@ -4,7 +4,7 @@
   "description": "Display import/require package size in the editor",
   "license": "MIT",
   "version": "4.0.0",
-  "publisher": "wix",
+  "publisher": "ruban-s",
   "main": "./dist/extension.electron.js",
   "engines": {
     "vscode": "^1.110.0"
@@ -176,7 +176,7 @@
     "chai": "^4.5.0",
     "filesize": "^10.1.6",
     "glob": "^7.2.0",
-    "import-cost": "^3.1.0",
+    "import-cost": "file:../import-cost",
     "mocha": "^11.3.0"
   },
   "icon": "images/import-cost-logo.png",
