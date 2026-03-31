@@ -1,4 +1,4 @@
-const { getPackages: getPackagesFromJS } = require('./babel-parser.js');
+const { getPackages: getPackagesFromJS } = require('./swc-parser.js');
 const { Lang } = require('./langs.js');
 
 function extractScriptFromHtml(html) {
