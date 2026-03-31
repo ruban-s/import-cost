@@ -13,7 +13,9 @@ await esbuild.build({
   platform: 'node',
   target: 'node16',
   format: 'cjs',
-  minify: true,
+  minifySyntax: true,
+  minifyWhitespace: true,
+  keepNames: true,
   sourcemap: true,
   external: [
     'vscode',

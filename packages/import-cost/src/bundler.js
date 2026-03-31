@@ -22,7 +22,7 @@ async function calcSize(packageInfo, config, callback) {
     const buildPromise = esbuild.build({
       stdin: {
         contents: packageInfo.string,
-        resolveDir: path.join(projectDir, 'node_modules'),
+        resolveDir: projectDir,
         loader: 'js',
       },
       bundle: true,
@@ -85,6 +85,7 @@ async function calcSize(packageInfo, config, callback) {
     const gzip = gzipSync(output).length;
     callback(null, { size, gzip });
   } catch (e) {
+    console.error('[import-cost] calcSize error:', packageInfo.name, e.message || e);
     callback(e);
   }
 }
