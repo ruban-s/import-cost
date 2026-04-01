@@ -65,6 +65,7 @@ import * as lodash from 'lodash';  531 KB (gzipped: 72 KB) — try named imports
 - **Debounced** — recalculates as you type without slowing down the editor
 - **Hover details** — hover over any size to see minified, gzipped, and compression ratio
 - **Ignore list** — skip specific packages via `importCost.ignoredPackages` setting
+- **Monorepo support** — works with npm, yarn, and pnpm workspaces
 
 ## Performance
 
