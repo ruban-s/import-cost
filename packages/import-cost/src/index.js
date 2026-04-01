@@ -1,4 +1,4 @@
-const { getSize, cleanup } = require('./package-info.js');
+const { getSize, cleanup, clearSizeCache } = require('./package-info.js');
 const { getPackageVersion } = require('./utils.js');
 const { getPackages } = require('./parser.js');
 const { EventEmitter } = require('events');
@@ -47,5 +47,6 @@ function importCost(
 module.exports = {
   importCost,
   cleanup,
+  clearSizeCache,
   Lang,
 };

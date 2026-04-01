@@ -1,5 +1,5 @@
 const { window, workspace, commands } = require('vscode');
-const { importCost, cleanup, Lang } = require('import-cost');
+const { importCost, cleanup, clearSizeCache, Lang } = require('import-cost');
 const {
   calculated,
   setDecorations,
@@ -14,6 +14,7 @@ const {
   clearPackageJsonDecorations,
   hasPackageJsonDecorations,
 } = require('./package-json-cost');
+const statusbar = require('./statusbar');
 const logger = require('./logger');
 
 let isActive = true;
@@ -22,6 +23,8 @@ const emitters = {};
 function activate(context) {
   try {
     logger.log('starting...');
+    statusbar.init();
+
     context.subscriptions.push(
       workspace.onDidChangeTextDocument(ev => {
         if (isPackageJson(ev.document)) {
@@ -34,11 +37,13 @@ function activate(context) {
         if (!editor?.document) return;
         if (isPackageJson(editor.document)) {
           onPackageJsonEditorChange(editor);
+          statusbar.onEditorChange(null);
           if (!hasPackageJsonDecorations(editor.document.fileName)) {
             processPackageJson(editor.document);
           }
         } else {
           onDidChangeActiveEditor(editor);
+          statusbar.onEditorChange(editor.document.fileName);
           if (!hasDecorations(editor.document.fileName)) {
             setTimeout(() => processActiveFile(editor.document), 100);
           }
@@ -55,6 +60,20 @@ function activate(context) {
           }
         } else {
           deactivate();
+        }
+      }),
+      commands.registerCommand('importCost.clearCache', async () => {
+        await clearSizeCache();
+        clearDecorations();
+        clearPackageJsonDecorations();
+        window.showInformationMessage('Import Cost: Cache cleared. Sizes will be recalculated.');
+        const doc = window.activeTextEditor?.document;
+        if (doc) {
+          if (isPackageJson(doc)) {
+            processPackageJson(doc);
+          } else {
+            processActiveFile(doc);
+          }
         }
       }),
     );
@@ -77,6 +96,7 @@ function deactivate() {
   logger.dispose();
   clearDecorations();
   clearPackageJsonDecorations();
+  statusbar.dispose();
 }
 
 async function processActiveFile(document) {
@@ -91,7 +111,10 @@ async function processActiveFile(document) {
     emitter.on('error', e => logger.log(`importCost error: ${e}`));
     emitter.on('start', packages => setDecorations(fileName, packages));
     emitter.on('calculated', packageInfo => calculated(fileName, packageInfo));
-    emitter.on('done', packages => setDecorations(fileName, packages));
+    emitter.on('done', packages => {
+      setDecorations(fileName, packages);
+      statusbar.setFileCost(fileName, packages);
+    });
     emitter.on('log', log => logger.log(log));
     emitters[fileName] = emitter;
   }

@@ -1,5 +1,11 @@
 # Changes
 
+## 4.2.0
+
+- Add status bar showing total import cost of current file
+- Add "Import Cost: Clear Cache" command to force recalculation
+- Add treeshake hint for wildcard imports (`import *`) on large packages (50KB+)
+
 ## 4.1.2
 
 - Lower minimum VSCode version to ^1.75.0 for Cursor and other fork compatibility
