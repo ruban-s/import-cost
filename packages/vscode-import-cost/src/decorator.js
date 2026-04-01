@@ -50,15 +50,28 @@ function getDecorationMessage(packageInfo) {
   }
   const size = fileSize(packageInfo.size, { standard: 'jedec' });
   const gzip = fileSize(packageInfo.gzip, { standard: 'jedec' });
+  const treeshakeHint = getTreeshakeHint(packageInfo);
+  let label;
   if (configuration.bundleSizeDecoration === 'minified') {
-    return text(`${size}`);
+    label = `${size}`;
   } else if (configuration.bundleSizeDecoration === 'gzipped') {
-    return text(`${gzip}`);
+    label = `${gzip}`;
   } else if (configuration.bundleSizeDecoration === 'compressed') {
-    return text(`${gzip}`);
+    label = `${gzip}`;
   } else {
-    return text(`${size} (gzipped: ${gzip})`);
+    label = `${size} (gzipped: ${gzip})`;
   }
+  return text(treeshakeHint ? `${label} — ${treeshakeHint}` : label);
+}
+
+function getTreeshakeHint(packageInfo) {
+  if (!packageInfo.string || !packageInfo.size) return null;
+  const sizeInKB = packageInfo.size / 1024;
+  if (sizeInKB < 50) return null;
+  if (packageInfo.string.startsWith('import * as ')) {
+    return 'consider named imports to reduce size';
+  }
+  return null;
 }
 
 function getDecorationColor(packageInfo) {
