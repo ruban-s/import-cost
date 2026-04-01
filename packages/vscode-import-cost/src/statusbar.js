@@ -6,7 +6,7 @@ const fileTotals = {};
 
 function init() {
   statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 100);
-  statusBarItem.command = 'importCost.toggle';
+  statusBarItem.command = 'importCost.clearCache';
   statusBarItem.show();
   update(null);
 }
