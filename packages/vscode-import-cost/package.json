@@ -3,7 +3,7 @@
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor — powered by esbuild & SWC",
   "license": "MIT",
-  "version": "4.2.0",
+  "version": "4.3.0",
   "publisher": "ruban-s",
   "main": "./dist/extension.electron.js",
   "engines": {
@@ -151,6 +151,14 @@
           "type": "number",
           "default": 20000,
           "description": "Size calculation timeout in milliseconds"
+        },
+        "importCost.ignoredPackages": {
+          "type": "array",
+          "default": [],
+          "description": "List of package names to skip size calculation for",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

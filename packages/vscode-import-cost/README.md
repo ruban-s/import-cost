@@ -63,6 +63,8 @@ import * as lodash from 'lodash';  531 KB (gzipped: 72 KB) — try named imports
 - **Cached results** — sizes are cached per package version, so switching tabs is instant
 - **Color coded** — green for small, yellow for medium, red for large packages
 - **Debounced** — recalculates as you type without slowing down the editor
+- **Hover details** — hover over any size to see minified, gzipped, and compression ratio
+- **Ignore list** — skip specific packages via `importCost.ignoredPackages` setting
 
 ## Performance
 
@@ -86,6 +88,7 @@ Built from the ground up for speed:
 | `importCost.timeout`                   | `20000`        | Size calculation timeout (ms)            |
 | `importCost.typescriptExtensions`      | `["\\.tsx?$"]` | File extensions for TypeScript           |
 | `importCost.javascriptExtensions`      | `["\\.jsx?$"]` | File extensions for JavaScript           |
+| `importCost.ignoredPackages`           | `[]`           | Package names to skip calculation for    |
 
 ## Commands
 

@@ -1,4 +1,4 @@
-const { workspace, window, Range, Position } = require('vscode');
+const { workspace, window, Range, Position, MarkdownString } = require('vscode');
 const { filesize: fileSize } = require('filesize');
 const logger = require('./logger');
 
@@ -116,7 +116,7 @@ function getDecorationColor(packageInfo) {
 }
 
 function decoration(line, packageInfo) {
-  return {
+  const dec = {
     renderOptions: {
       ...getDecorationColor(packageInfo),
       ...getDecorationMessage(packageInfo),
@@ -126,6 +126,32 @@ function decoration(line, packageInfo) {
       new Position(line - 1, 1024),
     ),
   };
+  if (packageInfo && packageInfo.size > 0) {
+    dec.hoverMessage = buildHoverMessage(packageInfo);
+  }
+  return dec;
+}
+
+function buildHoverMessage(pkg) {
+  const size = fileSize(pkg.size, { standard: 'jedec' });
+  const gzip = fileSize(pkg.gzip, { standard: 'jedec' });
+  const ratio = ((pkg.gzip / pkg.size) * 100).toFixed(0);
+  const sizeKB = (pkg.size / 1024).toFixed(1);
+
+  const md = new MarkdownString();
+  md.supportHtml = true;
+  md.isTrusted = true;
+  md.appendMarkdown(`**${pkg.name}**${pkg.version ? ` \`${pkg.version.split('@').pop()}\`` : ''}\n\n`);
+  md.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
+  md.appendMarkdown(`| Minified | ${size} |\n`);
+  md.appendMarkdown(`| Gzipped | ${gzip} (${ratio}% of minified) |\n`);
+
+  if (sizeKB > 100) {
+    md.appendMarkdown(`\n---\n`);
+    md.appendMarkdown(`*This is a large package. Consider if all imports are needed.*`);
+  }
+
+  return md;
 }
 
 function buildDecorationArray(fileName) {

@@ -1,5 +1,11 @@
 # Changes
 
+## 4.3.0
+
+- Add hover details — hover over any import size to see minified, gzipped, and compression ratio
+- Add `importCost.ignoredPackages` setting — skip size calculation for specific packages
+- Large package warning (100KB+) shown in hover tooltip
+
 ## 4.2.0
 
 - Add status bar showing total import cost of current file
