@@ -104,16 +104,24 @@ async function processActiveFile(document) {
     const { fileName } = document;
     emitters[fileName]?.removeAllListeners();
 
-    const { timeout } = workspace.getConfiguration('importCost');
-    const config = { concurrent: false, maxCallTime: timeout };
+    const configuration = workspace.getConfiguration('importCost');
+    const config = { concurrent: false, maxCallTime: configuration.timeout };
+    const ignored = configuration.ignoredPackages || [];
     const text = document.getText();
     const emitter = importCost(fileName, text, language(document), config);
     emitter.on('error', e => logger.log(`importCost error: ${e}`));
-    emitter.on('start', packages => setDecorations(fileName, packages));
-    emitter.on('calculated', packageInfo => calculated(fileName, packageInfo));
+    emitter.on('start', packages => {
+      setDecorations(fileName, filterIgnored(packages, ignored));
+    });
+    emitter.on('calculated', packageInfo => {
+      if (!ignored.includes(packageInfo.name)) {
+        calculated(fileName, packageInfo);
+      }
+    });
     emitter.on('done', packages => {
-      setDecorations(fileName, packages);
-      statusbar.setFileCost(fileName, packages);
+      const filtered = filterIgnored(packages, ignored);
+      setDecorations(fileName, filtered);
+      statusbar.setFileCost(fileName, filtered);
     });
     emitter.on('log', log => logger.log(log));
     emitters[fileName] = emitter;
@@ -152,6 +160,10 @@ function language({ fileName, languageId }) {
   } else {
     return undefined;
   }
+}
+
+function filterIgnored(packages, ignored) {
+  return packages.filter(p => !ignored.includes(p.name));
 }
 
 module.exports = {
