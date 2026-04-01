@@ -1,5 +1,9 @@
 # Changes
 
+## 4.1.2
+
+- Lower minimum VSCode version to ^1.75.0 for Cursor and other fork compatibility
+
 ## 4.1.1
 
 - Update all repository URLs to forked repo
