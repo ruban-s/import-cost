@@ -49,6 +49,61 @@ async function getPackageModuleContainer(pkg) {
   return foundDir;
 }
 
+// Find the monorepo root by looking for a root package.json with "workspaces" field
+async function findMonorepoRoot(startDir) {
+  let dir = startDir;
+  const { root } = path.parse(dir);
+  while (dir !== root) {
+    try {
+      const pkgJsonPath = path.resolve(dir, 'package.json');
+      const content = await fsAdapter.readFile(URI.file(pkgJsonPath));
+      const pkgJson = JSON.parse(content);
+      if (pkgJson.workspaces) {
+        return dir;
+      }
+      // Also check for pnpm-workspace.yaml
+      try {
+        await fsAdapter.stat(URI.file(path.resolve(dir, 'pnpm-workspace.yaml')));
+        return dir;
+      } catch {
+        // not a pnpm workspace root
+      }
+    } catch {
+      // no package.json at this level
+    }
+    dir = path.resolve(dir, '..');
+  }
+  return null;
+}
+
+// Collect all node_modules paths from file location up to monorepo root
+async function getAllNodeModulePaths(fileName) {
+  const fileDir = path.dirname(fileName);
+  const paths = [];
+  const seen = new Set();
+
+  // Start from the nearest package.json
+  const projectDir = await pkgDir(fileDir);
+  if (projectDir) {
+    const localNm = path.join(projectDir, 'node_modules');
+    paths.push(localNm);
+    seen.add(localNm);
+  }
+
+  // Walk up to find the monorepo root
+  const monoRoot = await findMonorepoRoot(fileDir);
+  if (monoRoot) {
+    const rootNm = path.join(monoRoot, 'node_modules');
+    if (!seen.has(rootNm)) {
+      paths.push(rootNm);
+      seen.add(rootNm);
+    }
+  }
+
+  // Also try the module container for the specific package (handles nested node_modules)
+  return paths;
+}
+
 async function getPackageDirectory(pkg) {
   const pkgName = getPackageName(pkg);
   const tmp = await getPackageModuleContainer(pkg);
@@ -56,7 +111,11 @@ async function getPackageDirectory(pkg) {
 }
 
 async function getPackageVersion(pkg) {
-  return `${getPackageName(pkg)}@${(await getPackageJson(pkg)).version}`;
+  try {
+    return `${getPackageName(pkg)}@${(await getPackageJson(pkg)).version}`;
+  } catch {
+    return null;
+  }
 }
 
 async function getPackageJson(pkg) {
@@ -68,4 +127,6 @@ module.exports = {
   getPackageVersion,
   getPackageJson,
   pkgDir,
+  findMonorepoRoot,
+  getAllNodeModulePaths,
 };

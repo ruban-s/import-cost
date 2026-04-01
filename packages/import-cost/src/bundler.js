@@ -3,8 +3,8 @@ const esbuild = require('esbuild');
 const { gzipSync } = require('zlib');
 const {
   getPackageJson,
-  getPackageModuleContainer,
   pkgDir,
+  getAllNodeModulePaths,
 } = require('./utils.js');
 
 const nodeBuiltins = new Set(require('module').builtinModules);
@@ -12,12 +12,17 @@ const nodeBuiltins = new Set(require('module').builtinModules);
 async function calcSize(packageInfo, config, callback) {
   try {
     const projectDir = await pkgDir(path.dirname(packageInfo.fileName));
-    const moduleContainer = await getPackageModuleContainer(packageInfo);
-    const pkgJson = await getPackageJson(packageInfo);
+    const allNodePaths = await getAllNodeModulePaths(packageInfo.fileName);
 
-    const externals = Object.keys(pkgJson.peerDependencies || {})
-      .concat(['react', 'react-dom'])
-      .filter(p => p !== packageInfo.name);
+    let externals = ['react', 'react-dom'];
+    try {
+      const pkgJson = await getPackageJson(packageInfo);
+      externals = Object.keys(pkgJson.peerDependencies || {})
+        .concat(externals)
+        .filter(p => p !== packageInfo.name);
+    } catch {
+      // package.json not found — use default externals
+    }
 
     const buildPromise = esbuild.build({
       stdin: {
@@ -31,7 +36,7 @@ async function calcSize(packageInfo, config, callback) {
       platform: 'browser',
       define: { 'process.env.NODE_ENV': '"production"' },
       external: externals,
-      nodePaths: [path.join(projectDir, 'node_modules'), moduleContainer],
+      nodePaths: allNodePaths,
       mainFields: ['browser', 'module', 'main'],
       loader: {
         '.css': 'empty',

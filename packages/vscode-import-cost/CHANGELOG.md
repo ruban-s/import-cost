@@ -1,5 +1,11 @@
 # Changes
 
+## 4.4.0
+
+- Monorepo support — resolves packages from hoisted root `node_modules` in npm/yarn/pnpm workspaces
+- pnpm workspace detection via `pnpm-workspace.yaml`
+- Workspace packages (like `@app/common`) are silently skipped instead of erroring
+
 ## 4.3.0
 
 - Add hover details — hover over any import size to see minified, gzipped, and compression ratio
