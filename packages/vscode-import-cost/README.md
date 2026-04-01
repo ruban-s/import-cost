@@ -44,6 +44,18 @@ Open any `package.json` to see the bundle size of each dependency next to the ve
 
 Works for both `dependencies` and `devDependencies`.
 
+### Status Bar
+
+Shows the total import cost of the current file in the status bar. Hover to see the gzipped total and package count. Click to clear cache and recalculate.
+
+### Treeshake Hints
+
+When `import * as ...` is used on a large package (50KB+), a hint is shown suggesting named imports to reduce bundle size:
+
+```typescript
+import * as lodash from 'lodash';  531 KB (gzipped: 72 KB) — try named imports to reduce size
+```
+
 ### Smart Behavior
 
 - **Skips local imports** — relative paths like `./utils` are ignored
@@ -77,7 +89,8 @@ Built from the ground up for speed:
 
 ## Commands
 
-- **Toggle Import Cost** — Enable or disable the extension
+- **Import Cost: Toggle** — Enable or disable the extension
+- **Import Cost: Clear Cache** — Clear cached sizes and recalculate
 
 ## Compatibility
 
