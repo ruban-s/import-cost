@@ -68,10 +68,19 @@ function getTreeshakeHint(packageInfo) {
   if (!packageInfo.string || !packageInfo.size) return null;
   const sizeInKB = packageInfo.size / 1024;
   if (sizeInKB < 50) return null;
-  if (packageInfo.string.startsWith('import * as ')) {
-    return 'consider named imports to reduce size';
-  }
-  return null;
+  // Only hint if it's a wildcard import AND the package supports named exports
+  // Skip packages that are commonly used as namespace imports
+  if (!packageInfo.string.startsWith('import * as ')) return null;
+  const name = packageInfo.name;
+  // Skip Node builtins and packages known to not support named imports
+  const skipList = [
+    'fs', 'path', 'os', 'crypto', 'http', 'https', 'url', 'util',
+    'stream', 'events', 'buffer', 'assert', 'zlib', 'net', 'tls',
+    'dns', 'child_process', 'cluster', 'dgram', 'readline',
+    'react', 'react-dom',
+  ];
+  if (skipList.includes(name)) return null;
+  return 'try named imports to reduce size';
 }
 
 function getDecorationColor(packageInfo) {
