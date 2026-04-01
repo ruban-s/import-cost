@@ -95,7 +95,3 @@ git commit -a -m "releasing version X.X.X"
 git push
 npx @vscode/vsce publish
 ```
-
-## Why & How
-
-Original blog post: https://citw.dev/posts/import-cost
