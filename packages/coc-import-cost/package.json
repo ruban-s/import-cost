@@ -1,6 +1,6 @@
 {
-  "name": "coc-import-cost",
-  "displayName": "Import Cost",
+  "name": "coc-import-cost-fast",
+  "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor",
   "license": "MIT",
   "version": "2.0.0",
