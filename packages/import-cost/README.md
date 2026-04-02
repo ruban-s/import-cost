@@ -1,7 +1,5 @@
 # import-cost
 
-> Forked from [wix/import-cost](https://github.com/wix/import-cost) and rebuilt for performance.
-
 This node module helps developers build extensions that display import/require bundle sizes in editors. Uses **esbuild** for bundling and **SWC** for parsing.
 
 Use freely to implement extensions for other IDEs (or contribute them to this repository).
@@ -67,3 +65,6 @@ As mentioned above, we recommend you un-register all of your event listeners usi
 ## Cleanup
 
 As mentioned above, we use a thread pool for doing the calculations. When your extension terminates, your IDE will typically send you some notification of that. It is important that you handle this notification and invoke `cleanup()` in order to kill the thread pool.
+
+## Credits
+Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
