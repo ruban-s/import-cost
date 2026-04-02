@@ -3,8 +3,6 @@
 This extension will display inline in the editor the size of the imported package.
 The extension utilizes esbuild in order to detect the imported size.
 
-![Example Image](https://citw.dev/_next/image?url=%2Fposts%2Fimport-cost%2F1quov3TFpgG2ur7myCLGtsA.gif&w=1080&q=75)
-
 ## What Changed from the Original
 
 - **Parser**: Replaced Babel with [SWC](https://swc.rs/) (Rust-based, 5-10x faster parsing)
@@ -96,4 +94,4 @@ npx @vscode/vsce publish
 
 ## Credits
 
-Forked from [wix/import-cost]([https://github.com/farm-fe/performance-compare](https://github.com/wix/import-cost)), thanks to the wix team!
+Forked from [wix/import-cost]([https://github.com/farm-fe/performance-compare](https://github.com/wix/import-cost), thanks to the wix team!
