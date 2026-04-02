@@ -1,7 +1,5 @@
 # Import Cost
 
-> Forked from [wix/import-cost](https://github.com/wix/import-cost) and optimized for performance.
-
 This extension will display inline in the editor the size of the imported package.
 The extension utilizes esbuild in order to detect the imported size.
 
@@ -95,3 +93,7 @@ git commit -a -m "releasing version X.X.X"
 git push
 npx @vscode/vsce publish
 ```
+
+## Credits
+
+Forked from [wix/import-cost]([https://github.com/farm-fe/performance-compare](https://github.com/wix/import-cost)), thanks to the wix team!
