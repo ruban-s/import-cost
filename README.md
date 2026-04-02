@@ -1,11 +1,7 @@
 # Import Cost
 
-> Forked from [wix/import-cost](https://github.com/wix/import-cost) and optimized for performance.
-
 This extension will display inline in the editor the size of the imported package.
 The extension utilizes esbuild in order to detect the imported size.
-
-![Example Image](https://citw.dev/_next/image?url=%2Fposts%2Fimport-cost%2F1quov3TFpgG2ur7myCLGtsA.gif&w=1080&q=75)
 
 ## What Changed from the Original
 
@@ -95,3 +91,7 @@ git commit -a -m "releasing version X.X.X"
 git push
 npx @vscode/vsce publish
 ```
+
+## Why & How
+
+Original blog post: https://citw.dev/posts/import-cost

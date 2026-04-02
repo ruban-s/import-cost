@@ -1,7 +1,5 @@
 # Import Cost Fast
 
-> Forked from [wix/import-cost](https://github.com/wix/import-cost)
-
 Display the bundle size of imported packages inline in the editor — powered by **esbuild** and **SWC**.
 
 ## Features
@@ -99,6 +97,9 @@ Built from the ground up for speed:
 ## Compatibility
 
 Works with **VSCode**, **VSCode Insiders**, **Cursor**, and other VSCode-based editors.
+
+## Credits
+Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
 
 ## License
 

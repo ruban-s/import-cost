@@ -1,7 +1,5 @@
 # Import Cost Fast — coc.nvim Extension
 
-> Forked from [wix/import-cost](https://github.com/wix/import-cost) and rebuilt for performance.
-
 This extension will display inline in the editor the size of the imported package.
 The extension utilizes esbuild and SWC in order to detect the imported size.
 ![Example Image](images/coc-import-cost.gif)
@@ -66,6 +64,5 @@ The following properties are configurable:
   "importCost.debug": false
 ```
 
-## Known Issues
-
-* Importing two libraries with a common dependency will show the size of both libraries isolated from each other, even if the common library needs to be imported only once.
+## Credits
+Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
