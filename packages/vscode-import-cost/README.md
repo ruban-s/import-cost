@@ -99,6 +99,7 @@ Built from the ground up for speed:
 Works with **VSCode**, **VSCode Insiders**, **Cursor**, and other VSCode-based editors.
 
 ## Credits
+
 Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
 
 ## License
