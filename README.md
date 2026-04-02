@@ -93,5 +93,4 @@ npx @vscode/vsce publish
 ```
 
 ## Credits
-
-Forked from [wix/import-cost]([https://github.com/farm-fe/performance-compare](https://github.com/wix/import-cost), thanks to the wix team!
+Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
