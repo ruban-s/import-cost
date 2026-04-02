@@ -9,7 +9,7 @@ See the [VSCode extension implementation](https://github.com/ruban-s/import-cost
 ## How to use
 
 ```sh
-$ npm install --save import-cost
+npm install --save import-cost
 ```
 
 ```js
@@ -42,23 +42,23 @@ In response, `importCost()` returns a standard Node `EventEmitter`. You can read
 
 Following are the events you can listen on for the returned emitter.
 
-### emitter.on('error', e => /* ... */);
+### emitter.on('error', e => /*...*/)
 
 The emitter will emit an `'error'` event for any error that caused it to stop working on the task at hand. Typically, you will not get any other event from the emitter after this error happened. Usually error will be that we failed to parse the file, but that's not really something that you need to act on since it is perfectly fine that user's code is sometimes not valid while he types. `e` will contain the error details, feel free to log it somewhere for cases it might be useful.
 
-### emitter.on('start', packages => /* ... */);
+### emitter.on('start', packages => /*...*/)
 
 The emitter will emit a `'start'` event right after it finished parsing the file and knows which imports are going to be calculated. The callback will receive an `Array` of `{fileName, line}` objects. Typically this would be a good time for your extension to mark those lines in the file as being calculated.
 
-### emitter.on('calculated', package => /* ... */);
+### emitter.on('calculated', package => /*...*/)
 
 The emitter will emit a `'calculated'` event for each of the packages as results arrive from our thread pool. The callback will receive a `{fileName, line, size, gzip}` object. Typically this would be where your extension displays the result in the appropriate line. The `size` in case we failed to calculate (mostly because of missing dependency) will be `0`.
 
-### emitter.on('done', packages => /* ... */);
+### emitter.on('done', packages => /*...*/)
 
 The emitter will emit a `'done'` event once we have results for all of the packages. The callback will receive an `Array` of `{fileName, line, size, gzip}` object. This is not super helpful since by now you already received a `'calculated'` event for each one of the packages in this array. However, it is a pretty good checkpoint to clear any decorations in lines that do not appear on this list and were left hanging because of some race condition edge cases.
 
-### emitter.removeAllListeners();
+### emitter.removeAllListeners()
 
 As mentioned above, we recommend you un-register all of your event listeners using `emitter.removeAllListeners()` when the file in question changes, this will help you not be confused with any results that are no longer to that file.
 
@@ -67,4 +67,5 @@ As mentioned above, we recommend you un-register all of your event listeners usi
 As mentioned above, we use a thread pool for doing the calculations. When your extension terminates, your IDE will typically send you some notification of that. It is important that you handle this notification and invoke `cleanup()` in order to kill the thread pool.
 
 ## Credits
+
 Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!

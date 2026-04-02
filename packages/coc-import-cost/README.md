@@ -17,6 +17,7 @@ Once you have `coc.nvim` installed, open Vim/Neovim, and execute:
 ```
 
 You'll also need to enable the code lens feature in coc (`:CocConfig`):
+
 ```
 "codeLens.enable": true
 ```
@@ -65,4 +66,5 @@ The following properties are configurable:
 ```
 
 ## Credits
+
 Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!

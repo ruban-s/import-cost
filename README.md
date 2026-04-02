@@ -92,6 +92,6 @@ git push
 npx @vscode/vsce publish
 ```
 
-## Why & How
+## Credits
 
-Original blog post: https://citw.dev/posts/import-cost
+Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
