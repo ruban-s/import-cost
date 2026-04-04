@@ -1,27 +1,34 @@
-const { window, StatusBarAlignment } = require('vscode');
-const { filesize } = require('filesize');
+import { filesize } from 'filesize';
+import type { PackageInfo } from 'import-cost';
+import * as vscode from 'vscode';
 
-let statusBarItem;
-const fileTotals = {};
+let statusBarItem: vscode.StatusBarItem;
+const fileTotals: Record<
+  string,
+  { total: number; gzip: number; count: number }
+> = {};
 
-function init() {
-  statusBarItem = window.createStatusBarItem(StatusBarAlignment.Right, 100);
+export function init(): void {
+  statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100,
+  );
   statusBarItem.command = 'importCost.clearCache';
   statusBarItem.show();
   update(null);
 }
 
-function setFileCost(fileName, packages) {
+export function setFileCost(fileName: string, packages: PackageInfo[]): void {
   const total = packages.reduce((sum, pkg) => sum + (pkg.size || 0), 0);
   const gzip = packages.reduce((sum, pkg) => sum + (pkg.gzip || 0), 0);
-  const count = packages.filter(pkg => pkg.size > 0).length;
+  const count = packages.filter(pkg => (pkg.size || 0) > 0).length;
   fileTotals[fileName] = { total, gzip, count };
-  if (window.activeTextEditor?.document.fileName === fileName) {
+  if (vscode.window.activeTextEditor?.document.fileName === fileName) {
     update(fileName);
   }
 }
 
-function update(fileName) {
+function update(fileName: string | null): void {
   if (!statusBarItem) return;
   if (!fileName || !fileTotals[fileName]) {
     statusBarItem.text = '$(package) Import Cost';
@@ -40,19 +47,12 @@ function update(fileName) {
   statusBarItem.tooltip = `Total: ${sizeStr} (gzipped: ${gzipStr}) — ${count} package${count !== 1 ? 's' : ''}`;
 }
 
-function onEditorChange(fileName) {
+export function onEditorChange(fileName: string | null): void {
   update(fileName);
 }
 
-function dispose() {
+export function dispose(): void {
   if (statusBarItem) {
     statusBarItem.dispose();
   }
 }
-
-module.exports = {
-  init,
-  setFileCost,
-  onEditorChange,
-  dispose,
-};

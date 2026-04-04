@@ -1,5 +1,11 @@
 # Changes
 
+## 5.0.0
+
+- Rewrite all packages to **TypeScript** with full type declarations
+- Reduce VSIX size from 43MB to 33MB with platform-specific builds and deduplicated binaries
+- Remove `native-fs-adapter` and `fs-extra` — use built-in `node:fs/promises`
+
 ## 4.4.0
 
 - Monorepo support — resolves packages from hoisted root `node_modules` in npm/yarn/pnpm workspaces

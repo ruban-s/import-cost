@@ -1,4 +1,4 @@
-import {workspace, window} from 'coc.nvim';
+import { window, workspace } from 'coc.nvim';
 
 class Logger {
   private channel;

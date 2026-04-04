@@ -1,5 +1,5 @@
-import {cleanup} from 'import-cost';
-import {ExtensionContext, languages, commands} from 'coc.nvim';
+import { commands, type ExtensionContext, languages } from 'coc.nvim';
+import { cleanup } from 'import-cost';
 import ImportCostCodeLensProvider from './codeLensProvider';
 import logger from './logger';
 
@@ -13,19 +13,21 @@ export function activate(context: ExtensionContext) {
   logger.log('starting...');
   languages.registerCodeLensProvider(
     [
-      {language: 'typescript'},
-      {language: 'typescript.tsx'},
-      {language: 'typescriptreact'},
-      {language: 'javascript'},
-      {language: 'javascript.jsx'},
-      {language: 'javascriptreact'}
+      { language: 'typescript' },
+      { language: 'typescript.tsx' },
+      { language: 'typescriptreact' },
+      { language: 'javascript' },
+      { language: 'javascript.jsx' },
+      { language: 'javascriptreact' },
     ],
-    new ImportCostCodeLensProvider(isActive)
+    new ImportCostCodeLensProvider(isActive),
   );
 
-  commands.registerCommand('importCost.toggle', () => { active = !active; });
+  commands.registerCommand('importCost.toggle', () => {
+    active = !active;
+  });
 
-  return {ready: Promise.resolve()};
+  return { ready: Promise.resolve() };
 }
 
 export function deactivate() {

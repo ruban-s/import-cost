@@ -3,7 +3,7 @@
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor",
   "license": "MIT",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "publisher": "ruban-s",
   "files": [
     "src",
@@ -87,19 +87,18 @@
     ]
   },
   "scripts": {
-    "lint": "tslint {src,test}/**/*.ts && tsc -p ./",
-    "compile": "tslint {src,test}/**/*.ts && tsc -watch -p ./"
+    "build": "tsc -p ./",
+    "lint": "npx @biomejs/biome check src/",
+    "compile": "tsc -watch -p ./"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tslint": "^6.1.3",
-    "tslint-config-wix": "^1.0.31",
-    "typescript": "^5.8.3"
+    "typescript": "5.9.3"
   },
   "dependencies": {
     "coc.nvim": "^0.0.82",
     "filesize": "^10.1.6",
-    "import-cost": "^3.2.0",
+    "import-cost": "file:../import-cost",
     "vscode-languageserver-protocol": "^3.17.5"
   },
   "icon": "images/import-cost-logo.png",

@@ -1,39 +1,41 @@
-const { window, workspace, commands } = require('vscode');
-const { importCost, cleanup, clearSizeCache, Lang } = require('import-cost');
-const {
+import type { EventEmitter } from 'events';
+import type { PackageInfo } from 'import-cost';
+import { cleanup, clearSizeCache, importCost, Lang } from 'import-cost';
+import * as vscode from 'vscode';
+import {
   calculated,
-  setDecorations,
   clearDecorations,
-  onDidChangeActiveEditor,
   hasDecorations,
-} = require('./decorator');
-const {
-  isPackageJson,
-  processPackageJson,
-  onEditorChange: onPackageJsonEditorChange,
+  onDidChangeActiveEditor,
+  setDecorations,
+} from './decorator';
+import logger from './logger';
+import {
   clearPackageJsonDecorations,
   hasPackageJsonDecorations,
-} = require('./package-json-cost');
-const statusbar = require('./statusbar');
-const logger = require('./logger');
+  isPackageJson,
+  onEditorChange as onPackageJsonEditorChange,
+  processPackageJson,
+} from './package-json-cost';
+import * as statusbar from './statusbar';
 
 let isActive = true;
-const emitters = {};
+const emitters: Record<string, EventEmitter> = {};
 
-function activate(context) {
+export function activate(context: vscode.ExtensionContext) {
   try {
     logger.log('starting...');
     statusbar.init();
 
     context.subscriptions.push(
-      workspace.onDidChangeTextDocument(ev => {
+      vscode.workspace.onDidChangeTextDocument(ev => {
         if (isPackageJson(ev.document)) {
           processPackageJson(ev.document);
         } else {
           processActiveFile(ev.document);
         }
       }),
-      window.onDidChangeActiveTextEditor(editor => {
+      vscode.window.onDidChangeActiveTextEditor(editor => {
         if (!editor?.document) return;
         if (isPackageJson(editor.document)) {
           onPackageJsonEditorChange(editor);
@@ -49,12 +51,12 @@ function activate(context) {
           }
         }
       }),
-      commands.registerCommand('importCost.toggle', () => {
+      vscode.commands.registerCommand('importCost.toggle', () => {
         isActive = !isActive;
         if (isActive) {
-          const doc = window.activeTextEditor?.document;
+          const doc = vscode.window.activeTextEditor?.document;
           if (isPackageJson(doc)) {
-            processPackageJson(doc);
+            processPackageJson(doc!);
           } else {
             processActiveFile(doc);
           }
@@ -62,12 +64,14 @@ function activate(context) {
           deactivate();
         }
       }),
-      commands.registerCommand('importCost.clearCache', async () => {
+      vscode.commands.registerCommand('importCost.clearCache', async () => {
         await clearSizeCache();
         clearDecorations();
         clearPackageJsonDecorations();
-        window.showInformationMessage('Import Cost: Cache cleared. Sizes will be recalculated.');
-        const doc = window.activeTextEditor?.document;
+        vscode.window.showInformationMessage(
+          'Import Cost: Cache cleared. Sizes will be recalculated.',
+        );
+        const doc = vscode.window.activeTextEditor?.document;
         if (doc) {
           if (isPackageJson(doc)) {
             processPackageJson(doc);
@@ -78,9 +82,9 @@ function activate(context) {
       }),
     );
     setTimeout(() => {
-      const doc = window.activeTextEditor?.document;
+      const doc = vscode.window.activeTextEditor?.document;
       if (isPackageJson(doc)) {
-        processPackageJson(doc);
+        processPackageJson(doc!);
       } else {
         processActiveFile(doc);
       }
@@ -91,7 +95,7 @@ function activate(context) {
   return { logger };
 }
 
-function deactivate() {
+export function deactivate(): void {
   cleanup();
   logger.dispose();
   clearDecorations();
@@ -99,40 +103,47 @@ function deactivate() {
   statusbar.dispose();
 }
 
-async function processActiveFile(document) {
+async function processActiveFile(
+  document?: vscode.TextDocument,
+): Promise<void> {
   if (isActive && document && language(document)) {
     const { fileName } = document;
     emitters[fileName]?.removeAllListeners();
 
-    const configuration = workspace.getConfiguration('importCost');
+    const configuration = vscode.workspace.getConfiguration('importCost');
     const config = { concurrent: false, maxCallTime: configuration.timeout };
-    const ignored = configuration.ignoredPackages || [];
+    const ignored: string[] = configuration.ignoredPackages || [];
     const text = document.getText();
-    const emitter = importCost(fileName, text, language(document), config);
-    emitter.on('error', e => logger.log(`importCost error: ${e}`));
-    emitter.on('start', packages => {
+    const emitter = importCost(fileName, text, language(document)!, config);
+    emitter.on('error', (e: Error) => logger.log(`importCost error: ${e}`));
+    emitter.on('start', (packages: PackageInfo[]) => {
       setDecorations(fileName, filterIgnored(packages, ignored));
     });
-    emitter.on('calculated', packageInfo => {
+    emitter.on('calculated', (packageInfo: PackageInfo) => {
       if (!ignored.includes(packageInfo.name)) {
         calculated(fileName, packageInfo);
       }
     });
-    emitter.on('done', packages => {
+    emitter.on('done', (packages: PackageInfo[]) => {
       const filtered = filterIgnored(packages, ignored);
       setDecorations(fileName, filtered);
       statusbar.setFileCost(fileName, filtered);
     });
-    emitter.on('log', log => logger.log(log));
+    emitter.on('log', (log: string) => logger.log(log));
     emitters[fileName] = emitter;
   }
 }
 
-function language({ fileName, languageId }) {
+type LangValue = (typeof Lang)[keyof typeof Lang];
+
+function language({
+  fileName,
+  languageId,
+}: vscode.TextDocument): LangValue | undefined {
   if (languageId === 'Log') {
     return;
   }
-  const configuration = workspace.getConfiguration('importCost');
+  const configuration = vscode.workspace.getConfiguration('importCost');
   const typescriptRegex = new RegExp(
     configuration.typescriptExtensions.join('|'),
   );
@@ -162,11 +173,9 @@ function language({ fileName, languageId }) {
   }
 }
 
-function filterIgnored(packages, ignored) {
+function filterIgnored(
+  packages: PackageInfo[],
+  ignored: string[],
+): PackageInfo[] {
   return packages.filter(p => !ignored.includes(p.name));
 }
-
-module.exports = {
-  activate,
-  deactivate,
-};

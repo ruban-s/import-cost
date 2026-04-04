@@ -1,9 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { expect } = require('chai');
-const { importCost: runner, cleanup, Lang } = require('../src/index.js');
-const { clearSizeCache, cacheFileName } = require('../src/package-info.js');
-const { DebounceError } = require('../src/debounce-promise.js');
+const { importCost: runner, cleanup, Lang, clearSizeCache, cacheFileName, DebounceError } = require('../dist/index.js');
 
 function fixture(fileName) {
   return path.join(__dirname, 'fixtures', fileName);

@@ -1,10 +1,11 @@
-import {importCost, Lang} from 'import-cost';
-import {workspace, CodeLensProvider} from 'coc.nvim';
+import { type CodeLensProvider, workspace } from 'coc.nvim';
+import { importCost, Lang } from 'import-cost';
 import {
   CancellationToken,
-  CodeLens,
-  TextDocument
+  type CodeLens,
+  type TextDocument,
 } from 'vscode-languageserver-protocol';
+
 let fileSize: any;
 async function getFileSize() {
   if (!fileSize) {
@@ -12,6 +13,7 @@ async function getFileSize() {
   }
   return fileSize;
 }
+
 import logger from './logger';
 
 function language(doc) {
@@ -19,10 +21,10 @@ function language(doc) {
   const languageId = doc.fileType;
   const configuration = workspace.getConfiguration('importCost');
   const typescriptRegex = new RegExp(
-    configuration.typescriptExtensions.join('|')
+    configuration.typescriptExtensions.join('|'),
   );
   const javascriptRegex = new RegExp(
-    configuration.javascriptExtensions.join('|')
+    configuration.javascriptExtensions.join('|'),
   );
   if (
     languageId === 'typescript' ||
@@ -47,10 +49,10 @@ async function getDecorationMessage(packageInfo) {
   }
 
   const fileSizeFn = await getFileSize();
-  let decorationMessage;
+  let decorationMessage: string;
   const configuration = workspace.getConfiguration('importCost');
-  const size = fileSizeFn(packageInfo.size, {standard: 'jedec'});
-  const gzip = fileSizeFn(packageInfo.gzip, {standard: 'jedec'});
+  const size = fileSizeFn(packageInfo.size, { standard: 'jedec' });
+  const gzip = fileSizeFn(packageInfo.gzip, { standard: 'jedec' });
   if (configuration.bundleSizeDecoration === 'both') {
     decorationMessage = `${size} (gzipped: ${gzip})`;
   } else if (configuration.bundleSizeDecoration === 'minified') {
@@ -77,34 +79,38 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
     this.isActive = isActive;
   }
 
-  public provideCodeLenses(
-    document: TextDocument
-  ): Promise<CodeLens[]> {
-    return new Promise((resolve) => {
-      if (!this.isActive()) { resolve([]); }
+  public provideCodeLenses(document: TextDocument): Promise<CodeLens[]> {
+    return new Promise(resolve => {
+      if (!this.isActive()) {
+        resolve([]);
+      }
 
       const fileName = getFileName(document.uri);
-      const {timeout} = workspace.getConfiguration('importCost');
+      const { timeout } = workspace.getConfiguration('importCost');
       try {
         const emitter = importCost(
           fileName,
           document.getText(),
           language(document),
-          {concurrent: true, maxCallTime: timeout}
+          { concurrent: true, maxCallTime: timeout },
         );
 
         emitter.on('done', async packages => {
           try {
             const imports = await Promise.all(
-              packages.filter(pkg => pkg.size > 0).map(async pkg => {
-                logger.log(
-                  `done with ${pkg.name}: ${JSON.stringify(pkg, null, 2)}`
-                );
-                return calculated(pkg);
-              })
+              packages
+                .filter(pkg => pkg.size > 0)
+                .map(async pkg => {
+                  logger.log(
+                    `done with ${pkg.name}: ${JSON.stringify(pkg, null, 2)}`,
+                  );
+                  return calculated(pkg);
+                }),
             );
 
-            logger.log(`resolving promise with: ${JSON.stringify({imports}, null, 2)}`);
+            logger.log(
+              `resolving promise with: ${JSON.stringify({ imports }, null, 2)}`,
+            );
             resolve(imports);
           } catch (e) {
             logger.log(`Exception in done emitter: ${e}`);
@@ -114,7 +120,7 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
 
         emitter.on('error', e => {
           logger.log(
-            `error while calculating import costs for ${fileName}: ${e}`
+            `error while calculating import costs for ${fileName}: ${e}`,
           );
         });
       } catch (e) {
@@ -123,9 +129,7 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
     });
   }
 
-  public resolveCodeLens(
-    codeLens: CodeLens
-  ): Promise<CodeLens> {
+  public resolveCodeLens(codeLens: CodeLens): Promise<CodeLens> {
     return Promise.resolve(codeLens);
   }
 }
@@ -137,15 +141,15 @@ async function calculated(packageInfo) {
 }
 
 function makeCodeLens(text, packageInfo) {
-  const {fileName} = packageInfo;
-  const position = {line: packageInfo.line - 1, character: 1024};
+  const { fileName } = packageInfo;
+  const position = { line: packageInfo.line - 1, character: 1024 };
   logger.log(
-    `Setting Decoration: ${text}, ${JSON.stringify(packageInfo, null, 2)}`
+    `Setting Decoration: ${text}, ${JSON.stringify(packageInfo, null, 2)}`,
   );
   const codeLens = {
-    command: {title: text},
-    range: {start: position, end: position},
-    data: {fileName}
+    command: { title: text },
+    range: { start: position, end: position },
+    data: { fileName },
   };
 
   return codeLens;
