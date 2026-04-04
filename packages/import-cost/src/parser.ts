@@ -1,7 +1,8 @@
-const { getPackages: getPackagesFromJS } = require('./swc-parser.js');
-const { Lang } = require('./langs.js');
+import { getPackages as getPackagesFromJS } from './swc-parser';
+import type { PackageInfo } from './types';
+import { Lang } from './types';
 
-function extractScriptFromHtml(html) {
+function extractScriptFromHtml(html: string): string {
   try {
     const match = html.match(/<script[^>]*>([\s\S]*?)<\/script>/i);
     return match ? match[1] : '';
@@ -11,7 +12,7 @@ function extractScriptFromHtml(html) {
   }
 }
 
-function getScriptTagLineNumber(html) {
+function getScriptTagLineNumber(html: string): number {
   const splitted = html.split('\n');
   for (let i = 0; i < splitted.length; i++) {
     if (/<script/.test(splitted[i])) {
@@ -21,7 +22,11 @@ function getScriptTagLineNumber(html) {
   return 0;
 }
 
-function getPackages(fileName, source, language) {
+export function getPackages(
+  fileName: string,
+  source: string,
+  language: Lang,
+): PackageInfo[] {
   if ([Lang.SVELTE, Lang.VUE].some(l => l === language)) {
     const scriptSource = extractScriptFromHtml(source);
     const scriptLine = getScriptTagLineNumber(source);
@@ -37,7 +42,3 @@ function getPackages(fileName, source, language) {
     return [];
   }
 }
-
-module.exports = {
-  getPackages,
-};

@@ -40,7 +40,7 @@
       "packages/import-cost/src/**",
       "packages/vscode-import-cost/src/**",
       "packages/vscode-import-cost/build.mjs",
-      "packages/native-fs-adapter/**"
+      "packages/coc-import-cost/src/**"
     ]
   }
 }

@@ -5,21 +5,22 @@ The extension utilizes esbuild in order to detect the imported size.
 
 ## What Changed from the Original
 
+- **Language**: Rewritten from JavaScript to **TypeScript** across all packages
 - **Parser**: Replaced Babel with [SWC](https://swc.rs/) (Rust-based, 5-10x faster parsing)
 - **Bundler**: Replaced webpack with [esbuild](https://esbuild.github.io/) (Go-based, 10-100x faster bundling)
 - **Linter/Formatter**: Replaced ESLint + Prettier with [Biome](https://biomejs.dev/) (Rust-based, single tool)
 - **Extension build**: Replaced webpack with esbuild for building the VSCode extension
-- **Removed**: cheerio (replaced with regex), worker-farm (esbuild is fast enough), memfs, terser, css-loader, file-loader, url-loader, 12 browser polyfills
+- **VSIX optimization**: Platform-specific builds, deduplicated native binaries (43MB → 33MB)
+- **Removed**: cheerio, worker-farm, memfs, terser, native-fs-adapter, vscode-uri, fs-extra, and 12 browser polyfills
 - **Result**: Runtime dependencies reduced from 16 to 2 (`esbuild`, `@swc/core`)
 
 ## Project Structure
 
 This is an [npm workspaces](https://docs.npmjs.com/cli/v7/using-npm/workspaces) monorepo:
 
-- [`packages/import-cost`](packages/import-cost) — Core Node module for calculating import sizes
-- [`packages/vscode-import-cost`](packages/vscode-import-cost) — VSCode extension
-- [`packages/coc-import-cost`](packages/coc-import-cost) — [coc.nvim](https://github.com/neoclide/coc.nvim) extension for Vim/Neovim
-- [`packages/native-fs-adapter`](packages/native-fs-adapter) — Filesystem adapter for cache I/O
+- [`packages/import-cost`](packages/import-cost) — Core TypeScript module for calculating import sizes
+- [`packages/vscode-import-cost`](packages/vscode-import-cost) — VSCode extension (TypeScript)
+- [`packages/coc-import-cost`](packages/coc-import-cost) — [coc.nvim](https://github.com/neoclide/coc.nvim) extension for Vim/Neovim (TypeScript)
 
 ## Getting Started
 
@@ -34,11 +35,17 @@ npm install
 # Run all tests
 npm test
 
+# Build all packages
+npm run build
+
 # Run import-cost tests only
-cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.js 'test/**/*.spec.js'
+npm test -w import-cost
 
 # Run a single test
 cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.js 'test/**/*.spec.js' --grep "pattern"
+
+# Type check
+cd packages/vscode-import-cost && npm run typecheck
 
 # Lint (Biome)
 npm run lint
@@ -46,8 +53,11 @@ npm run lint
 # Auto-fix lint issues
 npm run lint:fix
 
-# Build VSCode extension
+# Build VSCode extension (current platform)
 cd packages/vscode-import-cost && node build.mjs
+
+# Build VSCode extension (specific platform)
+cd packages/vscode-import-cost && node build.mjs --target=darwin-arm64
 
 # Package VSIX
 cd packages/vscode-import-cost && npm run build

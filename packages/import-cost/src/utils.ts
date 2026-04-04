@@ -1,12 +1,12 @@
-const path = require('path');
-const { URI } = require('vscode-uri');
-const fsAdapter = require('native-fs-adapter');
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import type { PackageInfo } from './types';
 
-async function pkgDir(directory) {
+export async function pkgDir(directory: string): Promise<string | undefined> {
   const { root } = path.parse(directory);
   while (directory !== root) {
     try {
-      await fsAdapter.stat(URI.file(path.resolve(directory, 'package.json')));
+      await fs.stat(path.resolve(directory, 'package.json'));
       return directory;
     } catch {
       directory = path.resolve(directory, '..');
@@ -14,21 +14,23 @@ async function pkgDir(directory) {
   }
 }
 
-async function parseJson(dir) {
+async function parseJson(dir: string): Promise<Record<string, unknown>> {
   const pkg = path.join(dir, 'package.json');
-  return JSON.parse(await fsAdapter.readFile(URI.file(pkg)));
+  return JSON.parse(await fs.readFile(pkg, 'utf-8'));
 }
 
-function getPackageName(pkg) {
+function getPackageName(pkg: PackageInfo): string {
   const pkgParts = pkg.name.split('/');
-  let pkgName = pkgParts.shift();
+  let pkgName = pkgParts.shift()!;
   if (pkgName.startsWith('@')) {
-    pkgName = path.join(pkgName, pkgParts.shift());
+    pkgName = path.join(pkgName, pkgParts.shift()!);
   }
   return pkgName;
 }
 
-async function getPackageModuleContainer(pkg) {
+export async function getPackageModuleContainer(
+  pkg: PackageInfo,
+): Promise<string> {
   let currentDir = path.dirname(pkg.fileName);
   let foundDir = '';
   const pkgName = getPackageName(pkg);
@@ -40,7 +42,7 @@ async function getPackageModuleContainer(pkg) {
     }
     const modulesDirectory = path.join(projectDir, 'node_modules');
     try {
-      await fsAdapter.stat(URI.file(path.resolve(modulesDirectory, pkgName)));
+      await fs.stat(path.resolve(modulesDirectory, pkgName));
       foundDir = modulesDirectory;
     } catch {
       currentDir = path.resolve(projectDir, '..');
@@ -49,21 +51,21 @@ async function getPackageModuleContainer(pkg) {
   return foundDir;
 }
 
-// Find the monorepo root by looking for a root package.json with "workspaces" field
-async function findMonorepoRoot(startDir) {
+export async function findMonorepoRoot(
+  startDir: string,
+): Promise<string | null> {
   let dir = startDir;
   const { root } = path.parse(dir);
   while (dir !== root) {
     try {
       const pkgJsonPath = path.resolve(dir, 'package.json');
-      const content = await fsAdapter.readFile(URI.file(pkgJsonPath));
+      const content = await fs.readFile(pkgJsonPath, 'utf-8');
       const pkgJson = JSON.parse(content);
       if (pkgJson.workspaces) {
         return dir;
       }
-      // Also check for pnpm-workspace.yaml
       try {
-        await fsAdapter.stat(URI.file(path.resolve(dir, 'pnpm-workspace.yaml')));
+        await fs.stat(path.resolve(dir, 'pnpm-workspace.yaml'));
         return dir;
       } catch {
         // not a pnpm workspace root
@@ -76,13 +78,13 @@ async function findMonorepoRoot(startDir) {
   return null;
 }
 
-// Collect all node_modules paths from file location up to monorepo root
-async function getAllNodeModulePaths(fileName) {
+export async function getAllNodeModulePaths(
+  fileName: string,
+): Promise<string[]> {
   const fileDir = path.dirname(fileName);
-  const paths = [];
-  const seen = new Set();
+  const paths: string[] = [];
+  const seen = new Set<string>();
 
-  // Start from the nearest package.json
   const projectDir = await pkgDir(fileDir);
   if (projectDir) {
     const localNm = path.join(projectDir, 'node_modules');
@@ -90,7 +92,6 @@ async function getAllNodeModulePaths(fileName) {
     seen.add(localNm);
   }
 
-  // Walk up to find the monorepo root
   const monoRoot = await findMonorepoRoot(fileDir);
   if (monoRoot) {
     const rootNm = path.join(monoRoot, 'node_modules');
@@ -100,17 +101,18 @@ async function getAllNodeModulePaths(fileName) {
     }
   }
 
-  // Also try the module container for the specific package (handles nested node_modules)
   return paths;
 }
 
-async function getPackageDirectory(pkg) {
+async function getPackageDirectory(pkg: PackageInfo): Promise<string> {
   const pkgName = getPackageName(pkg);
   const tmp = await getPackageModuleContainer(pkg);
   return path.resolve(tmp, pkgName);
 }
 
-async function getPackageVersion(pkg) {
+export async function getPackageVersion(
+  pkg: PackageInfo,
+): Promise<string | null> {
   try {
     return `${getPackageName(pkg)}@${(await getPackageJson(pkg)).version}`;
   } catch {
@@ -118,15 +120,8 @@ async function getPackageVersion(pkg) {
   }
 }
 
-async function getPackageJson(pkg) {
+export async function getPackageJson(
+  pkg: PackageInfo,
+): Promise<Record<string, any>> {
   return await parseJson(await getPackageDirectory(pkg));
 }
-
-module.exports = {
-  getPackageModuleContainer,
-  getPackageVersion,
-  getPackageJson,
-  pkgDir,
-  findMonorepoRoot,
-  getAllNodeModulePaths,
-};

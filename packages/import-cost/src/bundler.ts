@@ -1,15 +1,16 @@
-const path = require('path');
-const esbuild = require('esbuild');
-const { gzipSync } = require('zlib');
-const {
-  getPackageJson,
-  pkgDir,
-  getAllNodeModulePaths,
-} = require('./utils.js');
+import * as esbuild from 'esbuild';
+import * as path from 'path';
+import { gzipSync } from 'zlib';
+import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
+import { getAllNodeModulePaths, getPackageJson, pkgDir } from './utils';
 
 const nodeBuiltins = new Set(require('module').builtinModules);
 
-async function calcSize(packageInfo, config, callback) {
+export async function calcSize(
+  packageInfo: PackageInfo,
+  config: ImportCostConfig,
+  callback: (error: Error | null, result?: SizeResult) => void,
+): Promise<void> {
   try {
     const projectDir = await pkgDir(path.dirname(packageInfo.fileName));
     const allNodePaths = await getAllNodeModulePaths(packageInfo.fileName);
@@ -66,16 +67,16 @@ async function calcSize(packageInfo, config, callback) {
             });
             build.onLoad({ filter: /.*/, namespace: 'empty-module' }, () => ({
               contents: 'module.exports = {};',
-              loader: 'js',
+              loader: 'js' as const,
             }));
           },
         },
       ],
     });
 
-    let result;
+    let result: esbuild.BuildResult;
     if (config.maxCallTime && config.maxCallTime !== Infinity) {
-      const timeout = new Promise((_, reject) =>
+      const timeout = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('TimeoutError')), config.maxCallTime),
       );
       result = await Promise.race([buildPromise, timeout]);
@@ -84,16 +85,12 @@ async function calcSize(packageInfo, config, callback) {
     }
 
     const output = Buffer.concat(
-      result.outputFiles.map(f => Buffer.from(f.contents)),
+      result.outputFiles!.map(f => Buffer.from(f.contents)),
     );
     const size = output.length;
     const gzip = gzipSync(output).length;
     callback(null, { size, gzip });
   } catch (e) {
-    callback(e);
+    callback(e as Error);
   }
 }
-
-module.exports = {
-  calcSize,
-};

@@ -17,7 +17,7 @@
     "packages/*"
   ],
   "lint-staged": {
-    "*.js": "npx @biomejs/biome check --write"
+    "*.{js,ts,mjs}": "npx @biomejs/biome check --write"
   },
   "overrides": {
     "mocha": {
