@@ -2,12 +2,13 @@ import { EventEmitter } from 'events';
 import { cleanup, clearSizeCache, getSize } from './package-info';
 import { getPackages } from './parser';
 import type { ImportCostConfig, Lang, PackageInfo } from './types';
-import { getPackageVersion } from './utils';
+import { getPackageVersion, getSideEffects } from './utils';
 
 export { DebounceError } from './debounce-promise';
 export { cacheFileName, cleanup, clearSizeCache } from './package-info';
 export type { ImportCostConfig, PackageInfo, SizeResult } from './types';
 export { Lang } from './types';
+export { getSideEffects } from './utils';
 
 export function importCost(
   fileName: string,
@@ -28,7 +29,10 @@ export function importCost(
       );
       log(`Found ${imports.length} packages`);
       await Promise.allSettled(
-        imports.map(async pkg => (pkg.version = await getPackageVersion(pkg))),
+        imports.map(async pkg => {
+          pkg.version = await getPackageVersion(pkg);
+          pkg.sideEffects = await getSideEffects(pkg);
+        }),
       );
       imports = imports.filter(pkg => {
         log(`${pkg.version ? 'Found' : 'Skip'}: ${JSON.stringify(pkg)}`);

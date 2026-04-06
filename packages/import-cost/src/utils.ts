@@ -144,6 +144,17 @@ export async function getPackageVersion(
   }
 }
 
+export async function getSideEffects(
+  pkg: PackageInfo,
+): Promise<boolean | string[] | undefined> {
+  try {
+    const json = await getPackageJson(pkg);
+    return json.sideEffects;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getPackageJson(
   pkg: PackageInfo,
 ): Promise<Record<string, any>> {
