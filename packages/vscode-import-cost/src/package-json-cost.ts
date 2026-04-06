@@ -31,7 +31,9 @@ export function processPackageJson(document: vscode.TextDocument): void {
     ...(pkgJson.devDependencies || {}),
   };
 
-  const depNames = Object.keys(allDeps);
+  const depNames = Object.keys(allDeps).filter(
+    name => !name.startsWith('@types/'),
+  );
   if (depNames.length === 0) return;
 
   const depLines: Record<string, number> = {};
@@ -65,7 +67,7 @@ export function processPackageJson(document: vscode.TextDocument): void {
 
   emitter.on('calculated', (pkg: PackageInfo) => {
     const line = depLines[pkg.name];
-    if (line && (pkg.size || 0) > 0) {
+    if (line) {
       decorations[fileName][line] = pkg;
       applyDecorations(fileName);
     }
@@ -89,6 +91,10 @@ function getDecorationColor(pkg: PackageInfo) {
     dark: { after: { color: dark } },
     light: { after: { color: light } },
   });
+
+  if (pkg.error || !pkg.size) {
+    return color('#888888', '#999999');
+  }
 
   if (isOverBudget(pkg)) {
     return color(
@@ -116,8 +122,12 @@ function getDecorationColor(pkg: PackageInfo) {
 }
 
 function buildLabel(pkg: PackageInfo): string {
+  if (pkg.error || !pkg.size) {
+    return '$(circle-slash) bundle failed';
+  }
+
   const configuration = vscode.workspace.getConfiguration('importCost');
-  const size = filesize(pkg.size!, { standard: 'jedec' });
+  const size = filesize(pkg.size, { standard: 'jedec' });
   const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
   const brotli = pkg.brotli
     ? filesize(pkg.brotli, { standard: 'jedec' })
@@ -151,14 +161,30 @@ function buildLabel(pkg: PackageInfo): string {
 }
 
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
-  const size = filesize(pkg.size!, { standard: 'jedec' });
-  const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
-  const gzipRatio = ((pkg.gzip! / pkg.size!) * 100).toFixed(0);
-
   const md = new vscode.MarkdownString();
   md.supportHtml = true;
   md.isTrusted = true;
   md.appendMarkdown(`**${pkg.name}**\n\n`);
+
+  if (pkg.error || !pkg.size) {
+    md.appendMarkdown(
+      `*Bundle failed — this package may require native binaries, code generation, or has unresolvable dependencies.*\n`,
+    );
+    const alt = ALTERNATIVES[pkg.name];
+    if (alt) {
+      md.appendMarkdown(`\n---\n`);
+      md.appendMarkdown(
+        `$(lightbulb) **Lighter alternative:** \`${alt.to}\`\n\n`,
+      );
+      md.appendMarkdown(`${alt.reason}\n`);
+    }
+    return md;
+  }
+
+  const size = filesize(pkg.size, { standard: 'jedec' });
+  const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
+  const gzipRatio = ((pkg.gzip! / pkg.size) * 100).toFixed(0);
+
   md.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
   md.appendMarkdown(`| Minified | ${size} |\n`);
   md.appendMarkdown(`| Gzipped | ${gzip} (${gzipRatio}% of minified) |\n`);
