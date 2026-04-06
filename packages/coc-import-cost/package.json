@@ -98,7 +98,7 @@
   "dependencies": {
     "coc.nvim": "^0.0.82",
     "filesize": "^10.1.6",
-    "fast-import-cost": "file:../import-cost",
+    "import-cost-core": "file:../import-cost",
     "vscode-languageserver-protocol": "^3.17.5"
   },
   "icon": "images/import-cost-logo.png",

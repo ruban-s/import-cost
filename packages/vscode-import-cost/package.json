@@ -1,5 +1,5 @@
 {
-  "name": "vscode-fast-import-cost",
+  "name": "fast-import-cost",
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor — powered by esbuild & SWC",
   "license": "MIT",
@@ -209,7 +209,7 @@
     "chai": "^4.5.0",
     "filesize": "^10.1.6",
     "glob": "^7.2.0",
-    "fast-import-cost": "*",
+    "import-cost-core": "*",
     "mocha": "^11.3.0",
     "typescript": "5.9.3"
   },

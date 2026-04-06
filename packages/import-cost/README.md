@@ -1,14 +1,14 @@
-# fast-import-cost
+# import-cost-core
 
-[![npm version](https://img.shields.io/npm/v/fast-import-cost.svg)](https://www.npmjs.com/package/fast-import-cost)
-[![npm downloads](https://img.shields.io/npm/dm/fast-import-cost.svg)](https://www.npmjs.com/package/fast-import-cost)
-[![license](https://img.shields.io/npm/l/fast-import-cost.svg)](https://github.com/ruban-s/import-cost/blob/master/LICENSE)
+[![npm version](https://img.shields.io/npm/v/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core)
+[![npm downloads](https://img.shields.io/npm/dm/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core)
+[![license](https://img.shields.io/npm/l/import-cost-core.svg)](https://github.com/ruban-s/import-cost/blob/master/LICENSE)
 
 Calculate the bundle size of imported packages in JavaScript and TypeScript — powered by **esbuild** and **es-module-lexer**.
 
 Find heavy imports, enforce size budgets, and optimize your bundle. Works as a **CLI tool** for CI/CD pipelines and as a **Node.js library** for building editor extensions.
 
-**Why fast-import-cost?**
+**Why import-cost-core?**
 - **Blazing fast** — scans 50+ files in under 1 second
 - **Accurate** — shows minified, gzipped, and brotli sizes
 - **CI-ready** — `--budget` flag fails builds when imports are too large
@@ -18,27 +18,33 @@ Find heavy imports, enforce size budgets, and optimize your bundle. Works as a *
 ## CLI
 
 ```bash
+# Install globally (provides the `fast-import-cost` command)
+npm install -g import-cost-core
+
+# Or run directly with npx
+npx import-cost-core check src/
+
 # Scan a directory
-npx fast-import-cost check src/
+fast-import-cost check src/
 
 # Set a budget — exits with code 1 if any import exceeds it
-npx fast-import-cost check src/ --budget 100
+fast-import-cost check src/ --budget 100
 
 # JSON output for CI integration
-npx fast-import-cost check src/ --json --budget 50
+fast-import-cost check src/ --json --budget 50
 
 # Sort results by size (largest first)
-npx fast-import-cost check . --sort
+fast-import-cost check . --sort
 
 # Watch mode — re-scan on file changes
-npx fast-import-cost check src/ --watch
+fast-import-cost check src/ --watch
 
 # Ignore specific packages
-npx fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
+fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
 
 # Compare import costs between git branches
-npx fast-import-cost diff main
-npx fast-import-cost diff main feature-branch
+fast-import-cost diff main
+fast-import-cost diff main feature-branch
 ```
 
 Example output:
@@ -69,12 +75,12 @@ Diff output:
 ## Library API
 
 ```bash
-npm install fast-import-cost
+npm install import-cost-core
 ```
 
 ```typescript
-import { importCost, cleanup, Lang } from 'fast-import-cost';
-import type { PackageInfo } from 'fast-import-cost';
+import { importCost, cleanup, Lang } from 'import-cost-core';
+import type { PackageInfo } from 'import-cost-core';
 
 const emitter = importCost(fileName, fileContents, Lang.TYPESCRIPT);
 
