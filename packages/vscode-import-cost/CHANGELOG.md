@@ -1,11 +1,29 @@
 # Changes
 
+## 5.3.0
+
+- Show "bundle failed" indicator for packages that can't be bundled (e.g. `@prisma/client`, native modules)
+- Skip `@types/*` packages in package.json view (no runtime code)
+- Grey color for failed packages with hover explaining the reason
+
+## 5.2.0
+
+- Replace **SWC** with **es-module-lexer** — remove 23MB native binary
+- VSIX size: 13MB → **4.2MB**, installed size: 33MB → **10MB**
+- Only one native dependency remains (`esbuild`)
+
+## 5.1.1
+
+- Fix package.json decorations to support all display modes (brotli, budgets, alternatives)
+- Replace deprecated `vsce` CLI with `@vscode/vsce`
+
 ## 5.1.0
 
 - Add **brotli compression** display — shows real-world CDN size alongside gzip
 - Add **size budget** (`importCost.budgetKB`) — warning icon and red color when imports exceed the limit
 - Add **code actions** — quick-fix to convert wildcard imports to named imports on large packages
 - Add **lighter alternative suggestions** — hover tooltip suggests smaller replacements (e.g. moment → dayjs)
+- Add 7 display modes: `both`, `minified`, `gzip`, `brotli`, `minified+gzip`, `minified+brotli`, `compressed`
 
 ## 5.0.0
 
