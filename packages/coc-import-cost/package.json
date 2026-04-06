@@ -3,7 +3,7 @@
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor",
   "license": "MIT",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "publisher": "ruban-s",
   "files": [
     "src",
