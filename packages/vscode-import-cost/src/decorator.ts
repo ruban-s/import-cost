@@ -89,7 +89,7 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
       : `${size} (gzipped: ${gzip})`;
   }
   if (overBudget) {
-    label = `$(warning) ${label} — over budget!`;
+    label = `⚠ ${label} — over budget!`;
   } else if (treeshakeHint) {
     label = `${label} — ${treeshakeHint}`;
   }

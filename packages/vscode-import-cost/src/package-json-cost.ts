@@ -64,8 +64,10 @@ export function processPackageJson(document: vscode.TextDocument): void {
   );
 
   decorations[fileName] = {};
+  const seen = new Set<string>();
 
   emitter.on('calculated', (pkg: PackageInfo) => {
+    seen.add(pkg.name);
     const line = depLines[pkg.name];
     if (line) {
       decorations[fileName][line] = pkg;
@@ -73,7 +75,22 @@ export function processPackageJson(document: vscode.TextDocument): void {
     }
   });
 
-  emitter.on('done', () => applyDecorations(fileName));
+  emitter.on('done', () => {
+    // Show "not found" for packages that were skipped (version lookup failed)
+    for (const name of depNames) {
+      if (seen.has(name)) continue;
+      const line = depLines[name];
+      if (!line) continue;
+      decorations[fileName][line] = {
+        fileName,
+        name,
+        line,
+        string: '',
+        error: new Error('Package not found in node_modules'),
+      };
+    }
+    applyDecorations(fileName);
+  });
 }
 
 function isOverBudget(pkg: PackageInfo): boolean {
@@ -123,7 +140,10 @@ function getDecorationColor(pkg: PackageInfo) {
 
 function buildLabel(pkg: PackageInfo): string {
   if (pkg.error || !pkg.size) {
-    return '$(circle-slash) bundle failed';
+    if (pkg.error?.message?.includes('not found')) {
+      return '~ not found in node_modules';
+    }
+    return '~ bundle failed';
   }
 
   const configuration = vscode.workspace.getConfiguration('importCost');
@@ -154,7 +174,7 @@ function buildLabel(pkg: PackageInfo): string {
   }
 
   if (isOverBudget(pkg)) {
-    label = `$(warning) ${label} — over budget!`;
+    label = `⚠ ${label} — over budget!`;
   }
 
   return label;
@@ -167,9 +187,10 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   md.appendMarkdown(`**${pkg.name}**\n\n`);
 
   if (pkg.error || !pkg.size) {
-    md.appendMarkdown(
-      `*Bundle failed — this package may require native binaries, code generation, or has unresolvable dependencies.*\n`,
-    );
+    const reason = pkg.error?.message?.includes('not found')
+      ? `*Not found in node_modules — run \`npm install\` or \`pnpm install\` first.*\n`
+      : `*Bundle failed — this package may require native binaries, code generation, or has unresolvable dependencies.*\n`;
+    md.appendMarkdown(reason);
     const alt = ALTERNATIVES[pkg.name];
     if (alt) {
       md.appendMarkdown(`\n---\n`);
