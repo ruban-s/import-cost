@@ -21,7 +21,9 @@ export async function getSize(
     try {
       sizeCache[key] = sizeCache[key] || calcPackageSize(pkg, config);
       sizeCache[key] = await sizeCache[key];
-      await saveSizeCache();
+      if (config.debounceDelay !== 0) {
+        await saveSizeCache();
+      }
     } catch (e) {
       if (e === DebounceError) {
         delete sizeCache[key];
@@ -39,12 +41,24 @@ function calcPackageSize(
   packageInfo: PackageInfo,
   config: ImportCostConfig,
 ): Promise<SizeResult> {
+  const delay = config.debounceDelay ?? 500;
+  if (delay === 0) {
+    return new Promise<SizeResult>((resolve, reject) => {
+      calcSize(packageInfo, config, (e, result) =>
+        e ? reject(e) : resolve(result!),
+      );
+    });
+  }
   const key = `${packageInfo.fileName}#${packageInfo.line}`;
-  return debouncePromise<SizeResult>(key, (resolve, reject) => {
-    calcSize(packageInfo, config, (e, result) =>
-      e ? reject(e) : resolve(result!),
-    );
-  });
+  return debouncePromise<SizeResult>(
+    key,
+    (resolve, reject) => {
+      calcSize(packageInfo, config, (e, result) =>
+        e ? reject(e) : resolve(result!),
+      );
+    },
+    delay,
+  );
 }
 
 export async function clearSizeCache(): Promise<void> {

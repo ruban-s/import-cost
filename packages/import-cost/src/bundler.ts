@@ -7,14 +7,66 @@ import { getAllNodeModulePaths, getPackageJson, pkgDir } from './utils';
 
 const nodeBuiltins = new Set(require('module').builtinModules);
 
+// Cache resolved project dirs and node paths per file directory
+const projectDirCache = new Map<string, string | undefined>();
+const nodePathsCache = new Map<string, string[]>();
+
+async function getProjectDir(fileName: string): Promise<string | undefined> {
+  const dir = path.dirname(fileName);
+  if (!projectDirCache.has(dir)) {
+    projectDirCache.set(dir, await pkgDir(dir));
+  }
+  return projectDirCache.get(dir);
+}
+
+async function getNodePaths(fileName: string): Promise<string[]> {
+  const dir = path.dirname(fileName);
+  if (!nodePathsCache.has(dir)) {
+    nodePathsCache.set(dir, await getAllNodeModulePaths(fileName));
+  }
+  return nodePathsCache.get(dir)!;
+}
+
+const loaders: Record<string, esbuild.Loader> = {
+  '.css': 'empty',
+  '.scss': 'empty',
+  '.png': 'empty',
+  '.jpg': 'empty',
+  '.jpeg': 'empty',
+  '.gif': 'empty',
+  '.svg': 'empty',
+  '.woff': 'empty',
+  '.woff2': 'empty',
+  '.ttf': 'empty',
+  '.eot': 'empty',
+  '.wav': 'empty',
+};
+
+const ignoreUnresolvedPlugin: esbuild.Plugin = {
+  name: 'ignore-unresolved',
+  setup(build) {
+    build.onResolve({ filter: /.*/ }, args => {
+      const name = args.path.replace(/^node:/, '');
+      if (nodeBuiltins.has(name) || name === 'electron') {
+        return { path: args.path, namespace: 'empty-module' };
+      }
+      return null;
+    });
+    build.onLoad({ filter: /.*/, namespace: 'empty-module' }, () => ({
+      contents: 'module.exports = {};',
+      loader: 'js' as const,
+    }));
+  },
+};
+
 export async function calcSize(
   packageInfo: PackageInfo,
   config: ImportCostConfig,
   callback: (error: Error | null, result?: SizeResult) => void,
 ): Promise<void> {
   try {
-    const projectDir = await pkgDir(path.dirname(packageInfo.fileName));
-    const allNodePaths = await getAllNodeModulePaths(packageInfo.fileName);
+    const projectDir = await getProjectDir(packageInfo.fileName);
+    const allNodePaths = await getNodePaths(packageInfo.fileName);
 
     let externals = ['react', 'react-dom'];
     try {
@@ -40,39 +92,9 @@ export async function calcSize(
       external: externals,
       nodePaths: allNodePaths,
       mainFields: ['browser', 'module', 'main'],
-      loader: {
-        '.css': 'empty',
-        '.scss': 'empty',
-        '.png': 'empty',
-        '.jpg': 'empty',
-        '.jpeg': 'empty',
-        '.gif': 'empty',
-        '.svg': 'empty',
-        '.woff': 'empty',
-        '.woff2': 'empty',
-        '.ttf': 'empty',
-        '.eot': 'empty',
-        '.wav': 'empty',
-      },
+      loader: loaders,
       logLevel: 'silent',
-      plugins: [
-        {
-          name: 'ignore-unresolved',
-          setup(build) {
-            build.onResolve({ filter: /.*/ }, args => {
-              const name = args.path.replace(/^node:/, '');
-              if (nodeBuiltins.has(name) || name === 'electron') {
-                return { path: args.path, namespace: 'empty-module' };
-              }
-              return null;
-            });
-            build.onLoad({ filter: /.*/, namespace: 'empty-module' }, () => ({
-              contents: 'module.exports = {};',
-              loader: 'js' as const,
-            }));
-          },
-        },
-      ],
+      plugins: [ignoreUnresolvedPlugin],
     });
 
     let result: esbuild.BuildResult;
@@ -95,7 +117,6 @@ export async function calcSize(
     }).length;
     callback(null, { size, gzip, brotli });
   } catch (e) {
-    // Fallback: estimate size from the package's main entry file on disk
     try {
       const fallback = estimatePackageSize(packageInfo);
       if (fallback) {
