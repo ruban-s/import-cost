@@ -110,11 +110,47 @@ function processFile(fileName: string): Promise<PackageInfo[]> {
     const content = fs.readFileSync(fileName, 'utf-8');
     const emitter = importCost(fileName, content, lang, {
       maxCallTime: 30000,
-      concurrent: false,
+      concurrent: true,
     });
     emitter.on('done', resolve);
     emitter.on('error', reject);
   });
+}
+
+const CONCURRENCY = 5;
+
+async function processFilesParallel(
+  files: string[],
+  onProgress: (done: number, total: number) => void,
+): Promise<(PackageInfo & { file: string })[]> {
+  const allPackages: (PackageInfo & { file: string })[] = [];
+  let completed = 0;
+
+  async function worker(queue: string[]) {
+    while (queue.length > 0) {
+      const file = queue.shift()!;
+      try {
+        const packages = await processFile(file);
+        for (const pkg of packages) {
+          if (pkg.size && pkg.size > 0) {
+            allPackages.push({ ...pkg, file });
+          }
+        }
+      } catch {
+        // skip files that fail
+      }
+      completed++;
+      onProgress(completed, files.length);
+    }
+  }
+
+  const queue = [...files];
+  const workers = Array.from(
+    { length: Math.min(CONCURRENCY, files.length) },
+    () => worker(queue),
+  );
+  await Promise.all(workers);
+  return allPackages;
 }
 
 async function main() {
@@ -124,27 +160,29 @@ async function main() {
     process.exit(1);
   }
 
-  const allPackages: (PackageInfo & { file: string })[] = [];
-  let overBudgetCount = 0;
+  if (!jsonOutput) {
+    process.stderr.write(`  Scanning ${files.length} files...\n`);
+  }
 
-  for (const file of files) {
-    try {
-      const packages = await processFile(file);
-      for (const pkg of packages) {
-        if (pkg.size && pkg.size > 0) {
-          allPackages.push({ ...pkg, file });
-          if (budget > 0 && pkg.size / 1024 > budget) {
-            overBudgetCount++;
-          }
-        }
-      }
-    } catch {
-      // skip files that fail
+  const allPackages = await processFilesParallel(files, (done, total) => {
+    if (!jsonOutput) {
+      process.stderr.write(`\r  Progress: ${done}/${total} files`);
     }
+  });
+
+  if (!jsonOutput) {
+    process.stderr.write('\r\x1b[K');
   }
 
   if (sortBySize) {
     allPackages.sort((a, b) => (b.size || 0) - (a.size || 0));
+  }
+
+  let overBudgetCount = 0;
+  if (budget > 0) {
+    for (const pkg of allPackages) {
+      if ((pkg.size || 0) / 1024 > budget) overBudgetCount++;
+    }
   }
 
   if (jsonOutput) {
@@ -164,7 +202,7 @@ async function main() {
       console.log('No imports found.');
     } else {
       console.log(
-        `\n  Found ${allPackages.length} imports in ${files.length} files\n`,
+        `  Found ${allPackages.length} imports in ${files.length} files\n`,
       );
       for (const pkg of allPackages) {
         const size = filesize(pkg.size!, { standard: 'jedec' });
@@ -195,7 +233,6 @@ async function main() {
   }
 
   cleanup();
-  await clearSizeCache();
 
   if (budget > 0 && overBudgetCount > 0) {
     process.exit(1);
