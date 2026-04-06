@@ -6,12 +6,14 @@ export interface PackageInfo {
   version?: string | null;
   size?: number;
   gzip?: number;
+  brotli?: number;
   error?: Error;
 }
 
 export interface SizeResult {
   size: number;
   gzip: number;
+  brotli: number;
 }
 
 export interface ImportCostConfig {

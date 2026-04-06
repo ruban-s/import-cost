@@ -8,7 +8,7 @@ import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
 const { version: icVersion } = require('../package.json');
 
 let sizeCache: Record<string, SizeResult | Promise<SizeResult>> = {};
-const failedSize: SizeResult = { size: 0, gzip: 0 };
+const failedSize: SizeResult = { size: 0, gzip: 0, brotli: 0 };
 export const cacheFileName = path.join(os.tmpdir(), `ic-cache-${icVersion}`);
 
 export async function getSize(

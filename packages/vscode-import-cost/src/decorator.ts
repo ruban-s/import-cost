@@ -1,6 +1,7 @@
 import { filesize as fileSize } from 'filesize';
 import type { PackageInfo } from 'import-cost';
 import * as vscode from 'vscode';
+import { ALTERNATIVES } from './alternatives';
 import logger from './logger';
 
 const decorations: Record<string, Record<number, PackageInfo>> = {};
@@ -40,6 +41,14 @@ export function calculated(fileName: string, packageInfo: PackageInfo): void {
   flushDecorationsDebounced(fileName);
 }
 
+function isOverBudget(packageInfo: PackageInfo | undefined): boolean {
+  if (!packageInfo?.size) return false;
+  const budget = vscode.workspace
+    .getConfiguration('importCost')
+    .get<number>('budgetKB', 0);
+  return budget > 0 && packageInfo.size / 1024 > budget;
+}
+
 function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   const configuration = vscode.workspace.getConfiguration('importCost');
   const text = (s: string) => ({
@@ -54,18 +63,30 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   }
   const size = fileSize(packageInfo.size!, { standard: 'jedec' });
   const gzip = fileSize(packageInfo.gzip!, { standard: 'jedec' });
+  const brotli = packageInfo.brotli
+    ? fileSize(packageInfo.brotli, { standard: 'jedec' })
+    : null;
   const treeshakeHint = getTreeshakeHint(packageInfo);
+  const overBudget = isOverBudget(packageInfo);
   let label: string;
   if (configuration.bundleSizeDecoration === 'minified') {
     label = `${size}`;
-  } else if (configuration.bundleSizeDecoration === 'gzipped') {
-    label = `${gzip}`;
-  } else if (configuration.bundleSizeDecoration === 'compressed') {
-    label = `${gzip}`;
+  } else if (
+    configuration.bundleSizeDecoration === 'gzipped' ||
+    configuration.bundleSizeDecoration === 'compressed'
+  ) {
+    label = brotli ? `${brotli}` : `${gzip}`;
   } else {
-    label = `${size} (gzipped: ${gzip})`;
+    label = brotli
+      ? `${size} (brotli: ${brotli})`
+      : `${size} (gzipped: ${gzip})`;
   }
-  return text(treeshakeHint ? `${label} — ${treeshakeHint}` : label);
+  if (overBudget) {
+    label = `$(warning) ${label} — over budget!`;
+  } else if (treeshakeHint) {
+    label = `${label} — ${treeshakeHint}`;
+  }
+  return text(label);
 }
 
 function getTreeshakeHint(packageInfo: PackageInfo): string | null {
@@ -108,6 +129,14 @@ function getDecorationColor(packageInfo: PackageInfo | undefined) {
     dark: { after: { color: dark } },
     light: { after: { color: light } },
   });
+
+  if (isOverBudget(packageInfo)) {
+    return color(
+      configuration.largePackageDarkColor,
+      configuration.largePackageLightColor,
+    );
+  }
+
   const size =
     (configuration.bundleSizeColoring === 'minified'
       ? packageInfo?.size
@@ -154,7 +183,7 @@ function decoration(
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   const size = fileSize(pkg.size!, { standard: 'jedec' });
   const gzip = fileSize(pkg.gzip!, { standard: 'jedec' });
-  const ratio = ((pkg.gzip! / pkg.size!) * 100).toFixed(0);
+  const gzipRatio = ((pkg.gzip! / pkg.size!) * 100).toFixed(0);
   const sizeKB = pkg.size! / 1024;
 
   const md = new vscode.MarkdownString();
@@ -165,13 +194,35 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   );
   md.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
   md.appendMarkdown(`| Minified | ${size} |\n`);
-  md.appendMarkdown(`| Gzipped | ${gzip} (${ratio}% of minified) |\n`);
+  md.appendMarkdown(`| Gzipped | ${gzip} (${gzipRatio}% of minified) |\n`);
+  if (pkg.brotli) {
+    const brotli = fileSize(pkg.brotli, { standard: 'jedec' });
+    const brotliRatio = ((pkg.brotli / pkg.size!) * 100).toFixed(0);
+    md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
+  }
 
-  if (sizeKB > 100) {
+  if (isOverBudget(pkg)) {
+    const budget = vscode.workspace
+      .getConfiguration('importCost')
+      .get<number>('budgetKB', 0);
+    md.appendMarkdown(`\n---\n`);
+    md.appendMarkdown(
+      `$(warning) **Over budget!** This import is ${fileSize(pkg.size!, { standard: 'jedec' })} — budget is ${budget} KB.\n`,
+    );
+  } else if (sizeKB > 100) {
     md.appendMarkdown(`\n---\n`);
     md.appendMarkdown(
       `*This is a large package. Consider if all imports are needed.*`,
     );
+  }
+
+  const alt = ALTERNATIVES[pkg.name];
+  if (alt) {
+    md.appendMarkdown(`\n---\n`);
+    md.appendMarkdown(
+      `$(lightbulb) **Lighter alternative:** \`${alt.to}\`\n\n`,
+    );
+    md.appendMarkdown(`${alt.reason}\n`);
   }
 
   return md;
@@ -232,4 +283,10 @@ export function hasDecorations(fileName: string): boolean {
   return !!(
     decorations[fileName] && Object.keys(decorations[fileName]).length > 0
   );
+}
+
+export function getDecorationsForFile(
+  fileName: string,
+): Record<number, PackageInfo> | undefined {
+  return decorations[fileName];
 }
