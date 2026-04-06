@@ -5,10 +5,44 @@ import type { ImportCostConfig, Lang, PackageInfo } from './types';
 import { getPackageVersion, getSideEffects } from './utils';
 
 export { DebounceError } from './debounce-promise';
-export { cacheFileName, cleanup, clearSizeCache } from './package-info';
+export {
+  cacheFileName,
+  cleanup,
+  clearSizeCache,
+  getSize,
+} from './package-info';
+export { getPackages } from './parser';
 export type { ImportCostConfig, PackageInfo, SizeResult } from './types';
 export { Lang } from './types';
-export { getSideEffects } from './utils';
+export {
+  getPackageVersion,
+  getSideEffects,
+  getSideEffects as getSideEffectsForPkg,
+} from './utils';
+
+export async function importCostAsync(
+  fileName: string,
+  text: string,
+  language: Lang,
+  config: ImportCostConfig = {
+    maxCallTime: Infinity,
+    concurrent: true,
+    debounceDelay: 0,
+  },
+): Promise<PackageInfo[]> {
+  let imports = getPackages(fileName, text, language).filter(
+    (pkg: PackageInfo) => !pkg.name.startsWith('.'),
+  );
+  await Promise.allSettled(
+    imports.map(async pkg => {
+      pkg.version = await getPackageVersion(pkg);
+      pkg.sideEffects = await getSideEffects(pkg);
+    }),
+  );
+  imports = imports.filter(pkg => !!pkg.version);
+  const results = await Promise.all(imports.map(pkg => getSize(pkg, config)));
+  return results;
+}
 
 export function importCost(
   fileName: string,

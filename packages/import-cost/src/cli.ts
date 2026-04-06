@@ -3,7 +3,7 @@
 import { filesize } from 'filesize';
 import * as fs from 'fs';
 import * as path from 'path';
-import { cleanup, clearSizeCache, importCost, Lang } from './index';
+import { cleanup, importCostAsync, Lang } from './index';
 import type { PackageInfo } from './types';
 
 const args = process.argv.slice(2);
@@ -103,21 +103,18 @@ function walkDir(dir: string, files: string[]): void {
   }
 }
 
-function processFile(fileName: string): Promise<PackageInfo[]> {
-  return new Promise((resolve, reject) => {
-    const lang = getLanguage(fileName);
-    if (!lang) return resolve([]);
-    const content = fs.readFileSync(fileName, 'utf-8');
-    const emitter = importCost(fileName, content, lang, {
-      maxCallTime: 30000,
-      concurrent: true,
-    });
-    emitter.on('done', resolve);
-    emitter.on('error', reject);
+async function processFile(fileName: string): Promise<PackageInfo[]> {
+  const lang = getLanguage(fileName);
+  if (!lang) return [];
+  const content = fs.readFileSync(fileName, 'utf-8');
+  return importCostAsync(fileName, content, lang, {
+    maxCallTime: 30000,
+    concurrent: true,
+    debounceDelay: 0,
   });
 }
 
-const CONCURRENCY = 5;
+const CONCURRENCY = 10;
 
 async function processFilesParallel(
   files: string[],
@@ -237,6 +234,7 @@ async function main() {
   if (budget > 0 && overBudgetCount > 0) {
     process.exit(1);
   }
+  process.exit(0);
 }
 
 main().catch(e => {

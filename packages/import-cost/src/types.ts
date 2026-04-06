@@ -20,6 +20,7 @@ export interface SizeResult {
 export interface ImportCostConfig {
   maxCallTime: number;
   concurrent: boolean;
+  debounceDelay?: number;
 }
 
 export const Lang = {
