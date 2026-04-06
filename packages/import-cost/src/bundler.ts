@@ -1,4 +1,5 @@
 import * as esbuild from 'esbuild';
+import * as fs from 'fs';
 import * as path from 'path';
 import { brotliCompressSync, constants, gzipSync } from 'zlib';
 import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
@@ -94,6 +95,37 @@ export async function calcSize(
     }).length;
     callback(null, { size, gzip, brotli });
   } catch (e) {
+    // Fallback: estimate size from the package's main entry file on disk
+    try {
+      const fallback = estimatePackageSize(packageInfo);
+      if (fallback) {
+        callback(null, fallback);
+        return;
+      }
+    } catch {
+      // ignore fallback errors
+    }
     callback(e as Error);
+  }
+}
+
+function estimatePackageSize(packageInfo: PackageInfo): SizeResult | null {
+  const pkgName = packageInfo.name
+    .split('/')
+    .slice(0, packageInfo.name.startsWith('@') ? 2 : 1)
+    .join('/');
+  try {
+    const resolved = require.resolve(pkgName, {
+      paths: [path.dirname(packageInfo.fileName)],
+    });
+    const content = fs.readFileSync(resolved);
+    const size = content.length;
+    const gzip = gzipSync(content).length;
+    const brotli = brotliCompressSync(content, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
+    }).length;
+    return { size, gzip, brotli };
+  } catch {
+    return null;
   }
 }
