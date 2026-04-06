@@ -1,5 +1,5 @@
 import { type CodeLensProvider, workspace } from 'coc.nvim';
-import { importCost, Lang } from 'import-cost';
+import { importCost, Lang } from 'fast-import-cost';
 import {
   CancellationToken,
   type CodeLens,
