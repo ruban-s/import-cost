@@ -3,5 +3,7 @@
 .vscode-test-web/**
 test/**
 src/**
+node_modules/**
 build.mjs
+tsconfig.json
 .gitignore

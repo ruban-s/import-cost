@@ -1,5 +1,5 @@
 import type { EventEmitter } from 'events';
-import type { PackageInfo } from 'fast-import-cost';
+import type { PackageInfo } from 'import-cost-core';
 import {
   cleanup,
   clearSizeCache,
@@ -7,7 +7,7 @@ import {
   isIgnored,
   Lang,
   loadIgnoreFile,
-} from 'fast-import-cost';
+} from 'import-cost-core';
 import * as vscode from 'vscode';
 import { ImportCostCodeActionProvider } from './code-actions';
 import {

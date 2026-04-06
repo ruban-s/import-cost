@@ -1,5 +1,5 @@
 {
-  "name": "fast-import-cost",
+  "name": "import-cost-core",
   "version": "5.5.0",
   "description": "Calculate bundle size of imported packages — CLI and Node.js API powered by esbuild",
   "main": "dist/index.js",

@@ -1,5 +1,5 @@
-import type { PackageInfo } from 'fast-import-cost';
 import { filesize as fileSize } from 'filesize';
+import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
 import { ALTERNATIVES } from './alternatives';
 import logger from './logger';

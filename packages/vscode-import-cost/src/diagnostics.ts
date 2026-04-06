@@ -1,5 +1,5 @@
-import type { PackageInfo } from 'fast-import-cost';
 import { filesize } from 'filesize';
+import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
 
 const collection = vscode.languages.createDiagnosticCollection('importCost');

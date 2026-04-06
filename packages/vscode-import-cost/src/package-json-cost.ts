@@ -1,6 +1,6 @@
-import type { PackageInfo } from 'fast-import-cost';
-import { importCost, Lang } from 'fast-import-cost';
 import { filesize } from 'filesize';
+import type { PackageInfo } from 'import-cost-core';
+import { importCost, Lang } from 'import-cost-core';
 import * as vscode from 'vscode';
 import { ALTERNATIVES } from './alternatives';
 
