@@ -115,7 +115,7 @@ Built from the ground up for speed:
 
 | Setting                                | Default        | Description                              |
 | -------------------------------------- | -------------- | ---------------------------------------- |
-| `importCost.bundleSizeDecoration`      | `both`         | `both`, `minified`, `gzip`, `brotli`, or `compressed` |
+| `importCost.bundleSizeDecoration`      | `both`         | `both`, `minified`, `gzip`, `brotli`, `minified+gzip`, `minified+brotli`, `compressed` |
 | `importCost.bundleSizeColoring`        | `minified`     | Which size to use for coloring           |
 | `importCost.smallPackageSize`          | `50`           | Upper limit (KB) for small (green)       |
 | `importCost.mediumPackageSize`         | `100`          | Upper limit (KB) for medium (yellow)     |
