@@ -135,6 +135,8 @@
             "minified",
             "gzip",
             "brotli",
+            "minified+gzip",
+            "minified+brotli",
             "compressed"
           ],
           "enumDescriptions": [
@@ -142,7 +144,9 @@
             "Show only minified size",
             "Show only gzip size",
             "Show only brotli size",
-            "Show only gzip + brotli (no minified)"
+            "Show minified + gzip",
+            "Show minified + brotli",
+            "Show gzip + brotli (no minified)"
           ],
           "description": "Which bundle size to display inline"
         },

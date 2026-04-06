@@ -76,6 +76,10 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
     label = `${gzip}`;
   } else if (mode === 'brotli') {
     label = brotli ? `${brotli}` : `${gzip}`;
+  } else if (mode === 'minified+gzip') {
+    label = `${size} (gzip: ${gzip})`;
+  } else if (mode === 'minified+brotli') {
+    label = brotli ? `${size} (brotli: ${brotli})` : `${size} (gzip: ${gzip})`;
   } else if (mode === 'compressed') {
     label = brotli ? `gzip: ${gzip} | brotli: ${brotli}` : `${gzip}`;
   } else {
