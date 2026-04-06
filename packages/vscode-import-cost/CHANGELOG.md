@@ -1,5 +1,12 @@
 # Changes
 
+## 5.5.0
+
+- Add **watch mode** — `--watch` flag re-scans files on changes, live terminal output during development
+- Add **diff mode** — `fast-import-cost diff main` compares import costs between git branches/commits
+- Add **ignore list** — `.importcostignore` file with glob patterns, `--ignore` CLI flag, integrated with VS Code settings
+- Enhance **status bar** — shows `Σ` total with brotli in tooltip, `$(warning)` icon when imports exceed budget
+
 ## 5.4.0
 
 - Add **diagnostic warnings** — over-budget imports appear in the Problems panel with yellow squiggles

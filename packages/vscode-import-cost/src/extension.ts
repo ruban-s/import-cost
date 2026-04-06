@@ -1,6 +1,13 @@
 import type { EventEmitter } from 'events';
 import type { PackageInfo } from 'fast-import-cost';
-import { cleanup, clearSizeCache, importCost, Lang } from 'fast-import-cost';
+import {
+  cleanup,
+  clearSizeCache,
+  importCost,
+  isIgnored,
+  Lang,
+  loadIgnoreFile,
+} from 'fast-import-cost';
 import * as vscode from 'vscode';
 import { ImportCostCodeActionProvider } from './code-actions';
 import {
@@ -142,20 +149,24 @@ async function processActiveFile(
 
     const configuration = vscode.workspace.getConfiguration('importCost');
     const config = { concurrent: false, maxCallTime: configuration.timeout };
-    const ignored: string[] = configuration.ignoredPackages || [];
+    const settingsIgnored: string[] = configuration.ignoredPackages || [];
+    const workspaceRoot =
+      vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+    const fileIgnored = workspaceRoot ? loadIgnoreFile(workspaceRoot) : [];
+    const ignorePatterns = [...settingsIgnored, ...fileIgnored];
     const text = document.getText();
     const emitter = importCost(fileName, text, language(document)!, config);
     emitter.on('error', (e: Error) => logger.log(`importCost error: ${e}`));
     emitter.on('start', (packages: PackageInfo[]) => {
-      setDecorations(fileName, filterIgnored(packages, ignored));
+      setDecorations(fileName, filterIgnored(packages, ignorePatterns));
     });
     emitter.on('calculated', (packageInfo: PackageInfo) => {
-      if (!ignored.includes(packageInfo.name)) {
+      if (!isIgnored(packageInfo.name, ignorePatterns)) {
         calculated(fileName, packageInfo);
       }
     });
     emitter.on('done', (packages: PackageInfo[]) => {
-      const filtered = filterIgnored(packages, ignored);
+      const filtered = filterIgnored(packages, ignorePatterns);
       setDecorations(fileName, filtered);
       statusbar.setFileCost(fileName, filtered);
       diagnostics.updateDiagnostics(fileName, filtered);
@@ -206,7 +217,8 @@ function language({
 
 function filterIgnored(
   packages: PackageInfo[],
-  ignored: string[],
+  patterns: string[],
 ): PackageInfo[] {
-  return packages.filter(p => !ignored.includes(p.name));
+  if (patterns.length === 0) return packages;
+  return packages.filter(p => !isIgnored(p.name, patterns));
 }

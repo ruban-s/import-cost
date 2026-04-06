@@ -5,6 +5,7 @@ import type { ImportCostConfig, Lang, PackageInfo } from './types';
 import { getPackageVersion, getSideEffects } from './utils';
 
 export { DebounceError } from './debounce-promise';
+export { findIgnoreFile, isIgnored, loadIgnoreFile } from './ignore';
 export {
   cacheFileName,
   cleanup,

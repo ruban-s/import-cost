@@ -29,6 +29,16 @@ npx fast-import-cost check src/ --json --budget 50
 
 # Sort results by size (largest first)
 npx fast-import-cost check . --sort
+
+# Watch mode — re-scan on file changes
+npx fast-import-cost check src/ --watch
+
+# Ignore specific packages
+npx fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
+
+# Compare import costs between git branches
+npx fast-import-cost diff main
+npx fast-import-cost diff main feature-branch
 ```
 
 Example output:
@@ -42,6 +52,18 @@ Example output:
   src/main.ts:3  lodash           531 KB (gzip: 72 KB, brotli: 58 KB) ⚠ OVER BUDGET
 
   ⚠ 1 import(s) exceed the budget of 100 KB
+```
+
+Diff output:
+
+```
+  3 imports changed between main and HEAD
+
+  ↑ src/app.ts  express          +12.5 KB
+  + src/app.ts  axios            45.2 KB
+  - src/utils.ts  moment         231 KB
+
+  Total change: -173.3 KB
 ```
 
 ## Library API
@@ -126,6 +148,27 @@ Each calculated package contains:
 - `import x = require('pkg')` (TypeScript)
 
 Supports **JavaScript**, **TypeScript**, **JSX**, **TSX**, **Vue**, and **Svelte** files.
+
+## Ignore List
+
+Create a `.importcostignore` file in your project root to skip specific packages:
+
+```
+# Heavy packages we accept
+@prisma/client
+firebase*
+
+# All Angular packages
+@angular/*
+
+# Development tools
+webpack
+typescript
+```
+
+Patterns support exact names and glob wildcards (`*`, `**`). Lines starting with `#` are comments.
+
+The ignore file is automatically picked up by both the CLI and the VS Code extension.
 
 ## Package Manager Support
 
