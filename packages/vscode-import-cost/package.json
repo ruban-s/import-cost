@@ -3,7 +3,7 @@
   "displayName": "Import Cost Fast",
   "description": "Display import/require package size in the editor — powered by esbuild & SWC",
   "license": "MIT",
-  "version": "5.0.0",
+  "version": "5.1.0",
   "publisher": "ruban-s",
   "main": "./dist/extension.electron.js",
   "engines": {
@@ -135,7 +135,12 @@
             "minified",
             "compressed"
           ],
-          "description": "Which bundle size to display"
+          "description": "Which bundle size to display (compressed shows brotli when available)"
+        },
+        "importCost.budgetKB": {
+          "type": "number",
+          "default": 0,
+          "description": "Max allowed import size in KB. Imports exceeding this show a warning. Set to 0 to disable."
         },
         "importCost.showCalculatingDecoration": {
           "type": "boolean",

@@ -1,5 +1,12 @@
 # Changes
 
+## 5.1.0
+
+- Add **brotli compression** display — shows real-world CDN size alongside gzip
+- Add **size budget** (`importCost.budgetKB`) — warning icon and red color when imports exceed the limit
+- Add **code actions** — quick-fix to convert wildcard imports to named imports on large packages
+- Add **lighter alternative suggestions** — hover tooltip suggests smaller replacements (e.g. moment → dayjs)
+
 ## 5.0.0
 
 - Rewrite all packages to **TypeScript** with full type declarations

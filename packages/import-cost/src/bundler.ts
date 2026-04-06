@@ -1,6 +1,6 @@
 import * as esbuild from 'esbuild';
 import * as path from 'path';
-import { gzipSync } from 'zlib';
+import { brotliCompressSync, constants, gzipSync } from 'zlib';
 import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
 import { getAllNodeModulePaths, getPackageJson, pkgDir } from './utils';
 
@@ -89,7 +89,10 @@ export async function calcSize(
     );
     const size = output.length;
     const gzip = gzipSync(output).length;
-    callback(null, { size, gzip });
+    const brotli = brotliCompressSync(output, {
+      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
+    }).length;
+    callback(null, { size, gzip, brotli });
   } catch (e) {
     callback(e as Error);
   }

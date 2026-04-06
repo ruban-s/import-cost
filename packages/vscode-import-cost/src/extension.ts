@@ -2,6 +2,7 @@ import type { EventEmitter } from 'events';
 import type { PackageInfo } from 'import-cost';
 import { cleanup, clearSizeCache, importCost, Lang } from 'import-cost';
 import * as vscode from 'vscode';
+import { ImportCostCodeActionProvider } from './code-actions';
 import {
   calculated,
   clearDecorations,
@@ -19,6 +20,15 @@ import {
 } from './package-json-cost';
 import * as statusbar from './statusbar';
 
+const SUPPORTED_LANGUAGES = [
+  'javascript',
+  'javascriptreact',
+  'typescript',
+  'typescriptreact',
+  'vue',
+  'svelte',
+];
+
 let isActive = true;
 const emitters: Record<string, EventEmitter> = {};
 
@@ -27,7 +37,24 @@ export function activate(context: vscode.ExtensionContext) {
     logger.log('starting...');
     statusbar.init();
 
+    const selector = SUPPORTED_LANGUAGES.map(lang => ({ language: lang }));
     context.subscriptions.push(
+      vscode.languages.registerCodeActionsProvider(
+        selector,
+        new ImportCostCodeActionProvider(),
+        {
+          providedCodeActionKinds:
+            ImportCostCodeActionProvider.providedCodeActionKinds,
+        },
+      ),
+      vscode.commands.registerCommand(
+        'importCost.showAlternative',
+        (name: string, alt: string, reason: string) => {
+          vscode.window.showInformationMessage(
+            `Consider replacing "${name}" with ${alt}. ${reason}`,
+          );
+        },
+      ),
       vscode.workspace.onDidChangeTextDocument(ev => {
         if (isPackageJson(ev.document)) {
           processPackageJson(ev.document);
