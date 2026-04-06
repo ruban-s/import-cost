@@ -1,8 +1,19 @@
 # fast-import-cost
 
-Calculate the bundle size of imported packages — powered by **esbuild** and **es-module-lexer**.
+[![npm version](https://img.shields.io/npm/v/fast-import-cost.svg)](https://www.npmjs.com/package/fast-import-cost)
+[![npm downloads](https://img.shields.io/npm/dm/fast-import-cost.svg)](https://www.npmjs.com/package/fast-import-cost)
+[![license](https://img.shields.io/npm/l/fast-import-cost.svg)](https://github.com/ruban-s/import-cost/blob/master/LICENSE)
 
-Works as a **Node.js library** for building editor extensions, and as a **CLI tool** for CI pipelines.
+Calculate the bundle size of imported packages in JavaScript and TypeScript — powered by **esbuild** and **es-module-lexer**.
+
+Find heavy imports, enforce size budgets, and optimize your bundle. Works as a **CLI tool** for CI/CD pipelines and as a **Node.js library** for building editor extensions.
+
+**Why fast-import-cost?**
+- **Blazing fast** — scans 50+ files in under 1 second
+- **Accurate** — shows minified, gzipped, and brotli sizes
+- **CI-ready** — `--budget` flag fails builds when imports are too large
+- **Tree-shake aware** — tells you if a package supports tree-shaking
+- **Zero config** — works with npm, pnpm, yarn, and bun out of the box
 
 ## CLI
 
