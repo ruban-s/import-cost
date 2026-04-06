@@ -31,9 +31,27 @@ function getPackageName(pkg: PackageInfo): string {
 export async function getPackageModuleContainer(
   pkg: PackageInfo,
 ): Promise<string> {
+  const pkgName = getPackageName(pkg);
+
+  // Try require.resolve first (handles pnpm, yarn PnP, symlinks)
+  try {
+    const resolved = require.resolve(`${pkgName}/package.json`, {
+      paths: [path.dirname(pkg.fileName)],
+    });
+    // resolved = /path/to/node_modules/<pkg>/package.json
+    // We need /path/to/node_modules/
+    const pkgDir_ = path.dirname(resolved);
+    // For scoped packages: go up one more level
+    if (pkgName.includes('/')) {
+      return path.resolve(pkgDir_, '..', '..');
+    }
+    return path.resolve(pkgDir_, '..');
+  } catch {
+    // Fallback to manual directory walking
+  }
+
   let currentDir = path.dirname(pkg.fileName);
   let foundDir = '';
-  const pkgName = getPackageName(pkg);
 
   while (!foundDir) {
     const projectDir = await pkgDir(currentDir);
@@ -69,6 +87,12 @@ export async function findMonorepoRoot(
         return dir;
       } catch {
         // not a pnpm workspace root
+      }
+      try {
+        await fs.stat(path.resolve(dir, 'bun.lock'));
+        return dir;
+      } catch {
+        // not a bun workspace root
       }
     } catch {
       // no package.json at this level
@@ -123,5 +147,15 @@ export async function getPackageVersion(
 export async function getPackageJson(
   pkg: PackageInfo,
 ): Promise<Record<string, any>> {
-  return await parseJson(await getPackageDirectory(pkg));
+  // Try Node's require.resolve first (handles pnpm, yarn PnP, symlinks)
+  try {
+    const pkgName = getPackageName(pkg);
+    const pkgJsonPath = require.resolve(`${pkgName}/package.json`, {
+      paths: [path.dirname(pkg.fileName)],
+    });
+    return JSON.parse(await fs.readFile(pkgJsonPath, 'utf-8'));
+  } catch {
+    // Fallback to manual directory walking
+    return await parseJson(await getPackageDirectory(pkg));
+  }
 }
