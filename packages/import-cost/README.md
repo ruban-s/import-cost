@@ -1,71 +1,136 @@
-# import-cost
+# fast-import-cost
 
-This node module helps developers build extensions that display import/require bundle sizes in editors. Uses **esbuild** for bundling and **SWC** for parsing.
+Calculate the bundle size of imported packages — powered by **esbuild** and **es-module-lexer**.
 
-Use freely to implement extensions for other IDEs (or contribute them to this repository).
+Works as a **Node.js library** for building editor extensions, and as a **CLI tool** for CI pipelines.
 
-See the [VSCode extension implementation](https://github.com/ruban-s/import-cost/blob/master/packages/vscode-import-cost/src/extension.js) for a reference.
+## CLI
 
-## How to use
+```bash
+# Scan a directory
+npx fast-import-cost check src/
 
-```sh
-npm install --save import-cost
+# Set a budget — exits with code 1 if any import exceeds it
+npx fast-import-cost check src/ --budget 100
+
+# JSON output for CI integration
+npx fast-import-cost check src/ --json --budget 50
+
+# Sort results by size (largest first)
+npx fast-import-cost check . --sort
 ```
 
-```js
-import {importCost, cleanup, Lang} from 'import-cost';
+Example output:
 
-const emitter = importCost(fileName, fileContents, Lang.JAVASCRIPT);
-emitter.on('error', e => /* handle parse error of file, usually just log & ignore */);
-emitter.on('start', packages => /* mark those packages as "calculating..." */);
-emitter.on('calculated', package => /* show size of this single package */);
-emitter.on('done', packages => /* show sizes of all those packages */);
-emitter.removeAllListeners(); /* ask to stop getting events in case file was updated */)
+```
+  Found 4 imports in 2 files
 
-// ...
+  src/app.ts:1   @nestjs/common   91.88 KB (gzip: 24.56 KB, brotli: 20.12 KB) [tree-shakeable]
+  src/app.ts:2   express          783.37 KB (gzip: 261.47 KB, brotli: 215.30 KB)
+  src/main.ts:1  rxjs             42.15 KB (gzip: 12.30 KB, brotli: 10.45 KB) [tree-shakeable]
+  src/main.ts:3  lodash           531 KB (gzip: 72 KB, brotli: 58 KB) ⚠ OVER BUDGET
 
-cleanup(); /* do this when you shutdown your extension in order to kill our thread pool */
+  ⚠ 1 import(s) exceed the budget of 100 KB
 ```
 
-## API
+## Library API
 
-Usage as you can see above is pretty straight forward, `importCost()` gets three parameters:
+```bash
+npm install fast-import-cost
+```
 
-1) `fileName` - This is a `string` representing the full path to the file that is being processed. We need full file path since we need to look inside `node_modules` folder of the file in question
-2) `fileContents` - This is a `string` which contains the actual content of the file. We need it because in IDE extension it is usually much faster to get contents from IDE then reading it from filesystem. Also, obviously changes to the file might not have been saved yet, we want to work on the file as the user types to it.
-3) `language` - This effects which AST parser we will use to lookup the imports in the file. As you can see above, you pass either `Lang.JAVASCRIPT`, `Lang.TYPESCRIPT`, `Lang.VUE` or `Lang.SVELTE` to it. Typically IDE can tell you the language of the file, better use the correct API of your IDE then rely on extensions.
-4) `config` (optional) - Object containing the following keys: `maxCallTime` - give up after timeout (in milliseconds) if bundle calculation didn't complete, `concurrent` - boolean representing whether calculation should happen in multiple workers.
+```typescript
+import { importCost, cleanup, Lang } from 'fast-import-cost';
+import type { PackageInfo } from 'fast-import-cost';
 
-In response, `importCost()` returns a standard Node `EventEmitter`. You can read about event emitters in [Node docs](https://nodejs.org/api/events.html#events_class_eventemitter), but typically all you need to know is that you can register a callback for various events we emit using `emitter.on(eventName, callback)`. We also recommend you un-register using `emitter.removeAllListeners()` when the file in question changes, this will help you not be confused with any results that are no longer relevant to that file.
+const emitter = importCost(fileName, fileContents, Lang.TYPESCRIPT);
+
+emitter.on('start', (packages: PackageInfo[]) => {
+  // mark lines as "calculating..."
+});
+
+emitter.on('calculated', (pkg: PackageInfo) => {
+  // show size for this package
+  console.log(pkg.name, pkg.size, pkg.gzip, pkg.brotli);
+  console.log('tree-shakeable:', pkg.sideEffects === false);
+});
+
+emitter.on('done', (packages: PackageInfo[]) => {
+  // all packages calculated
+});
+
+emitter.on('error', (e: Error) => {
+  // parse error, usually safe to ignore
+});
+
+// when file changes, stop listening
+emitter.removeAllListeners();
+
+// when shutting down
+cleanup();
+```
+
+## Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `fileName` | `string` | Full path to the file being processed. Needed to resolve `node_modules`. |
+| `fileContents` | `string` | The file content (from IDE buffer, may be unsaved). |
+| `language` | `Lang` | `Lang.JAVASCRIPT`, `Lang.TYPESCRIPT`, `Lang.VUE`, or `Lang.SVELTE` |
+| `config` | `ImportCostConfig` | Optional. `maxCallTime` (ms timeout), `concurrent` (boolean). |
+
+## PackageInfo
+
+Each calculated package contains:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `string` | Package name (e.g. `lodash`) |
+| `size` | `number` | Minified size in bytes |
+| `gzip` | `number` | Gzipped size in bytes |
+| `brotli` | `number` | Brotli compressed size in bytes |
+| `sideEffects` | `boolean \| string[]` | From the package's `package.json` — `false` means tree-shakeable |
+| `line` | `number` | Line number in the source file |
+| `version` | `string` | Resolved version (e.g. `lodash@4.17.21`) |
+| `error` | `Error` | Set if bundling failed |
 
 ## Events
 
-Following are the events you can listen on for the returned emitter.
+| Event | Callback | Description |
+|-------|----------|-------------|
+| `start` | `(packages: PackageInfo[]) => void` | Parsing complete, sizes being calculated |
+| `calculated` | `(pkg: PackageInfo) => void` | Single package size ready |
+| `done` | `(packages: PackageInfo[]) => void` | All packages calculated |
+| `error` | `(e: Error) => void` | Fatal parse error |
+| `log` | `(message: string) => void` | Debug logging |
 
-### emitter.on('error', e => /*...*/)
+## Supported Patterns
 
-The emitter will emit an `'error'` event for any error that caused it to stop working on the task at hand. Typically, you will not get any other event from the emitter after this error happened. Usually error will be that we failed to parse the file, but that's not really something that you need to act on since it is perfectly fine that user's code is sometimes not valid while he types. `e` will contain the error details, feel free to log it somewhere for cases it might be useful.
+- `import x from 'pkg'`
+- `import * as x from 'pkg'`
+- `import { a, b } from 'pkg'`
+- `import { a as b } from 'pkg'`
+- `const x = require('pkg')`
+- `import('pkg')` (dynamic import)
+- `import x = require('pkg')` (TypeScript)
 
-### emitter.on('start', packages => /*...*/)
+Supports **JavaScript**, **TypeScript**, **JSX**, **TSX**, **Vue**, and **Svelte** files.
 
-The emitter will emit a `'start'` event right after it finished parsing the file and knows which imports are going to be calculated. The callback will receive an `Array` of `{fileName, line}` objects. Typically this would be a good time for your extension to mark those lines in the file as being calculated.
+## Package Manager Support
 
-### emitter.on('calculated', package => /*...*/)
+Works with **npm**, **pnpm**, **yarn**, **yarn PnP**, and **bun**. Uses `require.resolve` for package lookup which handles all symlink structures natively.
 
-The emitter will emit a `'calculated'` event for each of the packages as results arrive from our thread pool. The callback will receive a `{fileName, line, size, gzip}` object. Typically this would be where your extension displays the result in the appropriate line. The `size` in case we failed to calculate (mostly because of missing dependency) will be `0`.
+## Performance
 
-### emitter.on('done', packages => /*...*/)
-
-The emitter will emit a `'done'` event once we have results for all of the packages. The callback will receive an `Array` of `{fileName, line, size, gzip}` object. This is not super helpful since by now you already received a `'calculated'` event for each one of the packages in this array. However, it is a pretty good checkpoint to clear any decorations in lines that do not appear on this list and were left hanging because of some race condition edge cases.
-
-### emitter.removeAllListeners()
-
-As mentioned above, we recommend you un-register all of your event listeners using `emitter.removeAllListeners()` when the file in question changes, this will help you not be confused with any results that are no longer to that file.
-
-## Cleanup
-
-As mentioned above, we use a thread pool for doing the calculations. When your extension terminates, your IDE will typically send you some notification of that. It is important that you handle this notification and invoke `cleanup()` in order to kill the thread pool.
+- **esbuild** for bundling — 10-100x faster than webpack
+- **es-module-lexer** for parsing — purpose-built, <1ms per file
+- **Brotli** compression calculated at quality 4 for speed
+- Only 2 runtime dependencies
 
 ## Credits
 
 Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
+
+## License
+
+MIT
