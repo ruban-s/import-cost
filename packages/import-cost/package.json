@@ -1,12 +1,45 @@
 {
   "name": "fast-import-cost",
-  "version": "5.4.2",
+  "version": "5.4.3",
+  "description": "Calculate bundle size of imported packages — CLI and Node.js API powered by esbuild",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "fast-import-cost": "./dist/cli.js"
   },
   "license": "MIT",
+  "keywords": [
+    "import",
+    "require",
+    "size",
+    "cost",
+    "bundle",
+    "bundle-size",
+    "bundlesize",
+    "webpack",
+    "esbuild",
+    "tree-shaking",
+    "performance",
+    "cli",
+    "ci",
+    "budget",
+    "brotli",
+    "gzip",
+    "minified",
+    "typescript",
+    "javascript",
+    "vue",
+    "svelte",
+    "npm",
+    "pnpm",
+    "yarn",
+    "bun",
+    "package-size",
+    "weight",
+    "analyzer",
+    "lint",
+    "fast"
+  ],
   "files": [
     "dist"
   ],
@@ -19,6 +52,11 @@
     "type": "git",
     "url": "https://github.com/ruban-s/import-cost.git"
   },
+  "homepage": "https://github.com/ruban-s/import-cost#readme",
+  "bugs": {
+    "url": "https://github.com/ruban-s/import-cost/issues"
+  },
+  "author": "ruban-s",
   "devDependencies": {
     "@types/node": "^22.0.0",
     "chai": "^4.5.0",
