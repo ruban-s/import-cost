@@ -1,5 +1,12 @@
 # Changes
 
+## 5.3.1
+
+- Fallback to entry file size when esbuild bundling fails (covers `prisma`, `@nestjs/cli`, `firebase`, etc.)
+- Use `require.resolve` for package lookup — natively supports npm, pnpm, yarn, yarn PnP, and bun
+- Add bun workspace detection via `bun.lock`
+- Fix `$(warning)` codicon not rendering in decorations — use unicode `⚠` instead
+
 ## 5.3.0
 
 - Show "bundle failed" indicator for packages that can't be bundled (e.g. `@prisma/client`, native modules)
