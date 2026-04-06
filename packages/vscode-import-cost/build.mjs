@@ -9,35 +9,17 @@ import {
   statSync,
 } from 'fs';
 import { createRequire } from 'module';
-import { basename, dirname, extname, join } from 'path';
+import { dirname, extname, join } from 'path';
 
 const require = createRequire(import.meta.url);
 
 const PLATFORM_MAP = {
-  'darwin-arm64': {
-    esbuild: '@esbuild/darwin-arm64',
-    swc: '@swc/core-darwin-arm64',
-  },
-  'darwin-x64': {
-    esbuild: '@esbuild/darwin-x64',
-    swc: '@swc/core-darwin-x64',
-  },
-  'linux-x64': {
-    esbuild: '@esbuild/linux-x64',
-    swc: '@swc/core-linux-x64-gnu',
-  },
-  'linux-arm64': {
-    esbuild: '@esbuild/linux-arm64',
-    swc: '@swc/core-linux-arm64-gnu',
-  },
-  'win32-x64': {
-    esbuild: '@esbuild/win32-x64',
-    swc: '@swc/core-win32-x64-msvc',
-  },
-  'win32-arm64': {
-    esbuild: '@esbuild/win32-arm64',
-    swc: '@swc/core-win32-arm64-msvc',
-  },
+  'darwin-arm64': '@esbuild/darwin-arm64',
+  'darwin-x64': '@esbuild/darwin-x64',
+  'linux-x64': '@esbuild/linux-x64',
+  'linux-arm64': '@esbuild/linux-arm64',
+  'win32-x64': '@esbuild/win32-x64',
+  'win32-arm64': '@esbuild/win32-arm64',
 };
 
 const targetArg = process.argv.find(a => a.startsWith('--target='));
@@ -54,7 +36,7 @@ await esbuild.build({
   minifyWhitespace: true,
   keepNames: true,
   sourcemap: true,
-  external: ['vscode', 'esbuild', '@swc/core', '@swc/wasm'],
+  external: ['vscode', 'esbuild'],
   loader: { '.node': 'empty' },
   plugins: [
     {
@@ -142,7 +124,6 @@ function copyNativeBinaryOnly(name) {
 
   cpSync(join(modPath, 'package.json'), join(dest, 'package.json'));
 
-  // Copy only native binary files (.node, .exe, and platform binaries)
   const entries = readdirSync(modPath);
   for (const entry of entries) {
     const ext = extname(entry);
@@ -156,56 +137,29 @@ function copyNativeBinaryOnly(name) {
     ) {
       cpSync(full, join(dest, entry));
     }
-    // Some packages store binaries in a bin/ directory
     if (entry === 'bin' && statSync(full).isDirectory()) {
       cpSync(full, join(dest, 'bin'), { recursive: true });
     }
   }
 }
 
+// Copy esbuild JS wrapper (skip bin/ — platform pkg provides the binary)
+copyModuleEssentials('esbuild', { skipBin: true });
+
 if (target && PLATFORM_MAP[target]) {
-  const { esbuild: esbuildPlatformPkg, swc: swcPlatformPkg } =
-    PLATFORM_MAP[target];
-
-  // Copy esbuild core (JS wrapper, skip bin/ — platform pkg provides binary)
-  copyModuleEssentials('esbuild', { skipBin: true });
   // Copy only the target platform binary
   try {
-    copyNativeBinaryOnly(esbuildPlatformPkg);
+    copyNativeBinaryOnly(PLATFORM_MAP[target]);
   } catch {
-    console.warn(`Warning: ${esbuildPlatformPkg} not installed, skipping`);
-  }
-
-  // Copy @swc/core (JS wrapper + bindings)
-  copyModuleEssentials('@swc/core');
-  // Copy only the target platform binary
-  try {
-    copyNativeBinaryOnly(swcPlatformPkg);
-  } catch {
-    console.warn(`Warning: ${swcPlatformPkg} not installed, skipping`);
+    console.warn(`Warning: ${PLATFORM_MAP[target]} not installed, skipping`);
   }
 } else {
-  // No target specified: copy current platform's binaries (dev/local builds)
-  copyModuleEssentials('esbuild', { skipBin: true });
+  // No target: copy current platform's binaries
   const esbuildPkg = JSON.parse(
     readFileSync(require.resolve('esbuild/package.json'), 'utf8'),
   );
   if (esbuildPkg.optionalDependencies) {
     for (const dep of Object.keys(esbuildPkg.optionalDependencies)) {
-      try {
-        copyNativeBinaryOnly(dep);
-      } catch {
-        // Not installed on this platform
-      }
-    }
-  }
-
-  copyModuleEssentials('@swc/core');
-  const swcPkg = JSON.parse(
-    readFileSync(require.resolve('@swc/core/package.json'), 'utf8'),
-  );
-  if (swcPkg.optionalDependencies) {
-    for (const dep of Object.keys(swcPkg.optionalDependencies)) {
       try {
         copyNativeBinaryOnly(dep);
       } catch {

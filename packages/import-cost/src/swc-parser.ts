@@ -1,21 +1,13 @@
-import { parseSync } from '@swc/core';
-import type { PackageInfo } from './types';
-import { Lang } from './types';
+import { initSync, parse as parseImports } from 'es-module-lexer';
+import type { Lang, PackageInfo } from './types';
 
-interface SwcNode {
-  type: string;
-  body?: SwcNode[];
-  source?: { value: string };
-  specifiers?: SwcNode[];
-  local?: { value: string };
-  imported?: { value: string };
-  callee?: SwcNode;
-  value?: string;
-  arguments?: SwcNode[];
-  expression?: SwcNode;
-  quasis?: Array<{ raw: string }>;
-  typeOnly?: boolean;
-  [key: string]: unknown;
+let initialized = false;
+
+function ensureLexer(): void {
+  if (!initialized) {
+    initSync();
+    initialized = true;
+  }
 }
 
 export function getPackages(
@@ -24,43 +16,132 @@ export function getPackages(
   language: Lang,
   lineOffset = 0,
 ): PackageInfo[] {
-  const packages: PackageInfo[] = [];
-  const ast = parse(source, language) as unknown as SwcNode;
+  ensureLexer();
   const lines = source.split('\n');
+  const packages: PackageInfo[] = [];
 
-  for (const node of ast.body!) {
-    if (node.type === 'ImportDeclaration' && !node.typeOnly) {
-      packages.push({
-        fileName,
-        name: node.source!.value,
-        line: findImportLine(lines, node.source!.value, lineOffset),
-        string: compileImportString(node),
-      });
-    }
-  }
-
-  walkNode(ast, node => {
-    if (node.type !== 'CallExpression') return;
-    if (node.callee?.type === 'Identifier' && node.callee.value === 'require') {
-      const name = getPackageName(node);
+  // Handle TS `import X = require('Y')` syntax before es-module-lexer
+  // (es-module-lexer can't parse this syntax)
+  const tsImportRequireRegex =
+    /import\s+(\w+)\s*=\s*require\s*\(\s*(?:'([^']+)'|"([^"]+)")\s*\)/g;
+  let tsMatch: RegExpExecArray | null;
+  const tsRequireNames = new Set<string>();
+  while ((tsMatch = tsImportRequireRegex.exec(source)) !== null) {
+    const name = tsMatch[2] || tsMatch[3];
+    if (name) {
+      tsRequireNames.add(name);
       packages.push({
         fileName,
         name,
         line: findRequireLine(lines, name, lineOffset),
-        string: compileRequireString(node),
+        string: `require('${name}')`,
       });
-    } else if (node.callee?.type === 'Import') {
-      const name = getPackageName(node);
+    }
+  }
+
+  // Strip TS import-equals lines so es-module-lexer can parse the rest
+  const cleanSource = source.replace(
+    /import\s+\w+\s*=\s*require\s*\([^)]+\)\s*;?/g,
+    '',
+  );
+
+  // Parse static imports and dynamic import() using es-module-lexer
+  // Falls back to regex for files es-module-lexer can't parse (e.g. JSX fragments)
+  let imports: ReturnType<typeof parseImports>[0];
+  try {
+    [imports] = parseImports(cleanSource);
+  } catch (e) {
+    // If source contains JSX (<), use regex fallback; otherwise rethrow
+    if (source.includes('<')) {
+      return [
+        ...packages,
+        ...fallbackParse(fileName, source, lines, lineOffset, tsRequireNames),
+      ];
+    }
+    throw e;
+  }
+  for (const imp of imports) {
+    const name = imp.n;
+    if (!name) continue;
+
+    if (imp.d === -1) {
+      // Static import — check if it's a type-only import
+      const statement = cleanSource.substring(imp.ss, imp.se);
+      if (isTypeOnlyImport(statement)) continue;
+
+      packages.push({
+        fileName,
+        name,
+        line: findImportLine(lines, name, lineOffset),
+        string: compileImportString(statement, name),
+      });
+    } else if (imp.d >= 0) {
+      // Dynamic import()
       packages.push({
         fileName,
         name,
         line: findDynamicImportLine(lines, name, lineOffset),
-        string: compileImportExpressionString(node),
+        string: `import('${name}').then(res => console.log(res));`,
       });
     }
-  });
+  }
+
+  // Parse require() calls (es-module-lexer doesn't handle CJS)
+  const requireRegex = /require\s*\(\s*(?:'([^']+)'|"([^"]+)"|`([^`]+)`)\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = requireRegex.exec(source)) !== null) {
+    const name = match[1] || match[2] || match[3];
+    if (!name) continue;
+    if (tsRequireNames.has(name) || packages.some(p => p.name === name))
+      continue;
+    packages.push({
+      fileName,
+      name,
+      line: findRequireLine(lines, name, lineOffset),
+      string: `require('${name}')`,
+    });
+  }
 
   return packages;
+}
+
+function isTypeOnlyImport(statement: string): boolean {
+  return /^import\s+type\s/.test(statement.trim());
+}
+
+function compileImportString(statement: string, packageName: string): string {
+  const defaultMatch = statement.match(
+    /import\s+([a-zA-Z_$][\w$]*)\s*(?:,|\s+from)/,
+  );
+  const namespaceMatch = statement.match(/\*\s+as\s+([a-zA-Z_$][\w$]*)/);
+  const namedMatch = statement.match(/\{([^}]+)\}/);
+
+  const parts: string[] = [];
+
+  if (defaultMatch && !namespaceMatch) {
+    parts.push(defaultMatch[1]);
+  }
+  if (namespaceMatch) {
+    parts.push(`* as ${namespaceMatch[1]}`);
+  }
+  if (namedMatch) {
+    // Extract original names (before 'as' alias), sort them
+    const specifiers = namedMatch[1]
+      .split(',')
+      .map(s =>
+        s
+          .trim()
+          .split(/\s+as\s+/)[0]
+          .trim(),
+      )
+      .filter(Boolean)
+      .sort();
+    parts.push(`{${specifiers.join(', ')}}`);
+  }
+
+  const importString = parts.length > 0 ? parts.join(', ') : '* as tmp';
+
+  return `import ${importString} from '${packageName}';\nconsole.log(${importString.replace('* as ', '')});`;
 }
 
 function findImportLine(
@@ -112,90 +193,71 @@ function findDynamicImportLine(
   return 1 + lineOffset;
 }
 
-function parse(source: string, language: Lang) {
-  const syntax = language === Lang.TYPESCRIPT ? 'typescript' : 'ecmascript';
-  const opts =
-    syntax === 'typescript'
-      ? ({ syntax, tsx: true, decorators: true } as const)
-      : ({ syntax, jsx: true, decorators: true } as const);
-  return parseSync(source, opts);
-}
+function fallbackParse(
+  fileName: string,
+  source: string,
+  lines: string[],
+  lineOffset: number,
+  skipNames: Set<string>,
+): PackageInfo[] {
+  const packages: PackageInfo[] = [];
 
-function walkNode(node: SwcNode, visitor: (node: SwcNode) => void): void {
-  if (!node || typeof node !== 'object') return;
-  visitor(node);
-  for (const key of Object.keys(node)) {
-    const val = node[key] as unknown;
-    if (Array.isArray(val)) {
-      for (const child of val) walkNode(child, visitor);
-    } else if (val && typeof val === 'object' && (val as SwcNode).type) {
-      walkNode(val as SwcNode, visitor);
-    }
-  }
-}
-
-function compileImportString(node: SwcNode): string {
-  let importSpecifiers: string | undefined;
-  let importString: string;
-
-  if (node.specifiers && node.specifiers.length > 0) {
-    importString = []
-      .concat(node.specifiers as never[])
-      .sort((s1: SwcNode, s2: SwcNode) => {
-        if (s1.type === 'ImportSpecifier' && s2.type === 'ImportSpecifier') {
-          const n1 = s1.imported ? s1.imported.value : s1.local!.value;
-          const n2 = s2.imported ? s2.imported.value : s2.local!.value;
-          return n1 < n2 ? -1 : 1;
-        }
-        return 0;
-      })
-      .map((specifier: SwcNode, i: number) => {
-        if (specifier.type === 'ImportNamespaceSpecifier') {
-          return `* as ${specifier.local!.value}`;
-        } else if (specifier.type === 'ImportDefaultSpecifier') {
-          return specifier.local!.value;
-        } else if (specifier.type === 'ImportSpecifier') {
-          const name = specifier.imported
-            ? specifier.imported.value
-            : specifier.local!.value;
-          if (!importSpecifiers) {
-            importSpecifiers = '{';
-          }
-          importSpecifiers += name;
-          if (
-            node.specifiers![i + 1] &&
-            node.specifiers![i + 1].type === 'ImportSpecifier'
-          ) {
-            importSpecifiers += ', ';
-            return undefined;
-          } else {
-            const result = `${importSpecifiers}}`;
-            importSpecifiers = undefined;
-            return result;
-          }
-        }
-        return undefined;
-      })
-      .filter((x: unknown) => x)
-      .join(', ');
-  } else {
-    importString = '* as tmp';
+  // Static imports via regex
+  const importRegex =
+    /import\s+(?!type\s)(?:([^'"{}*\n]+?)\s+from\s+|(\*\s+as\s+\w+)\s+from\s+|\{([^}]+)\}\s+from\s+)['"]([^'"]+)['"]/g;
+  let m: RegExpExecArray | null;
+  while ((m = importRegex.exec(source)) !== null) {
+    const name = m[4];
+    if (!name || skipNames.has(name)) continue;
+    const statement = m[0];
+    packages.push({
+      fileName,
+      name,
+      line: findImportLine(lines, name, lineOffset),
+      string: compileImportString(statement, name),
+    });
   }
 
-  return `import ${importString} from '${
-    node.source!.value
-  }';\nconsole.log(${importString.replace('* as ', '')});`;
-}
+  // Side-effect imports: import 'module'
+  const sideEffectRegex = /import\s+['"]([^'"]+)['"]/g;
+  while ((m = sideEffectRegex.exec(source)) !== null) {
+    const name = m[1];
+    if (!name || skipNames.has(name) || packages.some(p => p.name === name))
+      continue;
+    packages.push({
+      fileName,
+      name,
+      line: findImportLine(lines, name, lineOffset),
+      string: `import * as tmp from '${name}';\nconsole.log(tmp);`,
+    });
+  }
 
-function compileRequireString(node: SwcNode): string {
-  return `require('${getPackageName(node)}')`;
-}
+  // Dynamic imports
+  const dynamicRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+  while ((m = dynamicRegex.exec(source)) !== null) {
+    const name = m[1];
+    if (!name || packages.some(p => p.name === name)) continue;
+    packages.push({
+      fileName,
+      name,
+      line: findDynamicImportLine(lines, name, lineOffset),
+      string: `import('${name}').then(res => console.log(res));`,
+    });
+  }
 
-function compileImportExpressionString(node: SwcNode): string {
-  return `import('${getPackageName(node)}').then(res => console.log(res));`;
-}
+  // require() calls
+  const requireRegex = /require\s*\(\s*(?:'([^']+)'|"([^"]+)"|`([^`]+)`)\s*\)/g;
+  while ((m = requireRegex.exec(source)) !== null) {
+    const name = m[1] || m[2] || m[3];
+    if (!name || skipNames.has(name) || packages.some(p => p.name === name))
+      continue;
+    packages.push({
+      fileName,
+      name,
+      line: findRequireLine(lines, name, lineOffset),
+      string: `require('${name}')`,
+    });
+  }
 
-function getPackageName(node: SwcNode): string {
-  const arg = node.arguments![0].expression!;
-  return arg.type === 'TemplateLiteral' ? arg.quasis![0].raw : arg.value!;
+  return packages;
 }
