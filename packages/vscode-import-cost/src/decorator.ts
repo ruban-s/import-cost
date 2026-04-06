@@ -69,16 +69,19 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   const treeshakeHint = getTreeshakeHint(packageInfo);
   const overBudget = isOverBudget(packageInfo);
   let label: string;
-  if (configuration.bundleSizeDecoration === 'minified') {
+  const mode = configuration.bundleSizeDecoration;
+  if (mode === 'minified') {
     label = `${size}`;
-  } else if (
-    configuration.bundleSizeDecoration === 'gzipped' ||
-    configuration.bundleSizeDecoration === 'compressed'
-  ) {
+  } else if (mode === 'gzip') {
+    label = `${gzip}`;
+  } else if (mode === 'brotli') {
     label = brotli ? `${brotli}` : `${gzip}`;
+  } else if (mode === 'compressed') {
+    label = brotli ? `gzip: ${gzip} | brotli: ${brotli}` : `${gzip}`;
   } else {
+    // "both" (default) — minified + gzip + brotli
     label = brotli
-      ? `${size} (brotli: ${brotli})`
+      ? `${size} (gzip: ${gzip}, brotli: ${brotli})`
       : `${size} (gzipped: ${gzip})`;
   }
   if (overBudget) {

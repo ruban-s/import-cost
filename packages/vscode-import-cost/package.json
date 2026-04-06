@@ -133,9 +133,18 @@
           "enum": [
             "both",
             "minified",
+            "gzip",
+            "brotli",
             "compressed"
           ],
-          "description": "Which bundle size to display (compressed shows brotli when available)"
+          "enumDescriptions": [
+            "Show minified + gzip + brotli",
+            "Show only minified size",
+            "Show only gzip size",
+            "Show only brotli size",
+            "Show only gzip + brotli (no minified)"
+          ],
+          "description": "Which bundle size to display inline"
         },
         "importCost.budgetKB": {
           "type": "number",

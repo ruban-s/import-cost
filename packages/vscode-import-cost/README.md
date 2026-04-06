@@ -6,16 +6,16 @@ Display the bundle size of imported packages inline in the editor — powered by
 
 ### Import/Require Size
 
-Shows the minified and brotli-compressed size of every imported package inline:
+Shows the minified, gzipped, and brotli-compressed size of every imported package inline:
 
 ```typescript
-import { Controller, Get, Post } from '@nestjs/common';  91.88 KB (brotli: 20.12 KB)
-import { Request } from 'express';                        783.37 KB (brotli: 215.30 KB)
+import { Controller, Get, Post } from '@nestjs/common';  91.88 KB (gzip: 24.56 KB, brotli: 20.12 KB)
+import { Request } from 'express';                        783.37 KB (gzip: 261.47 KB, brotli: 215.30 KB)
 import { PrismaService } from './prisma.service';         // local imports are skipped
 import type { StringValue } from 'ms';                    // type imports are skipped
 ```
 
-Hover over any size to see minified, gzipped, and brotli compression ratios.
+Hover over any size for a detailed breakdown with compression ratios.
 
 Supported patterns:
 
@@ -53,7 +53,7 @@ Shows the total import cost of the current file in the status bar. Hover to see 
 Set a maximum allowed size per import. Any import that exceeds the budget gets a warning icon and red color:
 
 ```typescript
-import * as lodash from 'lodash';  ⚠ 531 KB (brotli: 58 KB) — over budget!
+import * as lodash from 'lodash';  ⚠ 531 KB (gzip: 72 KB, brotli: 58 KB) — over budget!
 ```
 
 Configure via `importCost.budgetKB` (default: 0 = disabled).
@@ -71,7 +71,8 @@ Hover over a heavy package to see a suggested replacement:
 
 > **moment** `2.30.1`
 > | Minified | 531 KB |
-> | Brotli | 58 KB |
+> | Gzipped | 72 KB (14% of minified) |
+> | Brotli | 58 KB (11% of minified) |
 > ---
 > **Lighter alternative:** `dayjs`
 > dayjs has the same API at ~2KB vs ~300KB
@@ -83,7 +84,7 @@ Supports 16+ common swaps including lodash, axios, uuid, classnames, and more.
 When `import * as ...` is used on a large package (50KB+), a hint is shown suggesting named imports to reduce bundle size:
 
 ```typescript
-import * as lodash from 'lodash';  531 KB (brotli: 58 KB) — try named imports to reduce size
+import * as lodash from 'lodash';  531 KB (gzip: 72 KB, brotli: 58 KB) — try named imports
 ```
 
 ### Smart Behavior
@@ -114,7 +115,7 @@ Built from the ground up for speed:
 
 | Setting                                | Default        | Description                              |
 | -------------------------------------- | -------------- | ---------------------------------------- |
-| `importCost.bundleSizeDecoration`      | `both`         | Show `minified`, `compressed`, or `both` |
+| `importCost.bundleSizeDecoration`      | `both`         | `both`, `minified`, `gzip`, `brotli`, or `compressed` |
 | `importCost.bundleSizeColoring`        | `minified`     | Which size to use for coloring           |
 | `importCost.smallPackageSize`          | `50`           | Upper limit (KB) for small (green)       |
 | `importCost.mediumPackageSize`         | `100`          | Upper limit (KB) for medium (yellow)     |
