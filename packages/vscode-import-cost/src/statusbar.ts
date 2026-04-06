@@ -1,5 +1,5 @@
+import type { PackageInfo } from 'fast-import-cost';
 import { filesize } from 'filesize';
-import type { PackageInfo } from 'import-cost';
 import * as vscode from 'vscode';
 
 let statusBarItem: vscode.StatusBarItem;

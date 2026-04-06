@@ -1,5 +1,5 @@
 import { commands, type ExtensionContext, languages } from 'coc.nvim';
-import { cleanup } from 'import-cost';
+import { cleanup } from 'fast-import-cost';
 import ImportCostCodeLensProvider from './codeLensProvider';
 import logger from './logger';
 

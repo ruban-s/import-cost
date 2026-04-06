@@ -1,4 +1,4 @@
-import type { PackageInfo } from 'import-cost';
+import type { PackageInfo } from 'fast-import-cost';
 import * as vscode from 'vscode';
 import { ALTERNATIVES } from './alternatives';
 import { getDecorationsForFile } from './decorator';

@@ -1,6 +1,6 @@
 import type { EventEmitter } from 'events';
-import type { PackageInfo } from 'import-cost';
-import { cleanup, clearSizeCache, importCost, Lang } from 'import-cost';
+import type { PackageInfo } from 'fast-import-cost';
+import { cleanup, clearSizeCache, importCost, Lang } from 'fast-import-cost';
 import * as vscode from 'vscode';
 import { ImportCostCodeActionProvider } from './code-actions';
 import {
