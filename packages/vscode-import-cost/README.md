@@ -98,18 +98,38 @@ import * as lodash from 'lodash';  531 KB (gzip: 72 KB, brotli: 58 KB) — try n
 - **Size budgets** — set a max allowed size per import via `importCost.budgetKB`
 - **Code actions** — lightbulb quick-fixes to convert wildcard imports and suggest alternatives
 - **Alternative suggestions** — hover tooltip suggests lighter replacements for heavy packages
+- **Diagnostic warnings** — over-budget imports show in the Problems panel
+- **Side effects badge** — hover shows whether a package is tree-shakeable
 - **Ignore list** — skip specific packages via `importCost.ignoredPackages` setting
-- **Monorepo support** — works with npm, yarn, and pnpm workspaces
+- **Monorepo support** — works with npm, yarn, pnpm, and bun workspaces
+
+## CLI
+
+Run import cost checks from the command line or CI:
+
+```bash
+# Scan a directory
+npx fast-import-cost check src/
+
+# Set a budget (exits with code 1 if exceeded)
+npx fast-import-cost check src/ --budget 100
+
+# JSON output for CI integration
+npx fast-import-cost check src/ --json --budget 50
+
+# Sort by size (largest first)
+npx fast-import-cost check . --sort
+```
 
 ## Performance
 
 Built from the ground up for speed:
 
 - **esbuild** for bundling — 10-100x faster than webpack
-- **SWC** for parsing — Rust-based parser, 5-10x faster than Babel
+- **es-module-lexer** for parsing — purpose-built import scanner, <1ms per file
 - **No worker processes** — esbuild is fast enough to run in-process
 - **No temp files** — bundling happens entirely in memory
-- **Lightweight** — only 2 runtime dependencies (`esbuild`, `@swc/core`)
+- **Lightweight** — only 2 runtime dependencies (`esbuild`, `es-module-lexer`)
 
 ## Configuration
 

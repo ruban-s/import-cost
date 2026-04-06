@@ -208,6 +208,18 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
   }
 
+  // Side effects badge
+  if (pkg.sideEffects === false) {
+    md.appendMarkdown(`| Tree-shakeable | Yes |\n`);
+  } else if (
+    pkg.sideEffects === true ||
+    (pkg.sideEffects === undefined && sizeKB > 50)
+  ) {
+    md.appendMarkdown(`| Tree-shakeable | No (has side effects) |\n`);
+  } else if (Array.isArray(pkg.sideEffects)) {
+    md.appendMarkdown(`| Tree-shakeable | Partial |\n`);
+  }
+
   if (isOverBudget(pkg)) {
     const budget = vscode.workspace
       .getConfiguration('importCost')

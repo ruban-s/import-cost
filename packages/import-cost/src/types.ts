@@ -7,6 +7,7 @@ export interface PackageInfo {
   size?: number;
   gzip?: number;
   brotli?: number;
+  sideEffects?: boolean | string[];
   error?: Error;
 }
 

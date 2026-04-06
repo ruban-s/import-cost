@@ -1,5 +1,11 @@
 # Changes
 
+## 5.4.0
+
+- Add **diagnostic warnings** — over-budget imports appear in the Problems panel with yellow squiggles
+- Add **side effects badge** — hover shows `Tree-shakeable: Yes/No/Partial` based on package's `sideEffects` field
+- Add **CLI mode** — `npx fast-import-cost check src/ --budget 100` for CI pipelines, supports `--json` and `--sort`
+
 ## 5.3.1
 
 - Fallback to entry file size when esbuild bundling fails (covers `prisma`, `@nestjs/cli`, `firebase`, etc.)

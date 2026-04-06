@@ -10,6 +10,7 @@ import {
   onDidChangeActiveEditor,
   setDecorations,
 } from './decorator';
+import * as diagnostics from './diagnostics';
 import logger from './logger';
 import {
   clearPackageJsonDecorations,
@@ -127,6 +128,8 @@ export function deactivate(): void {
   logger.dispose();
   clearDecorations();
   clearPackageJsonDecorations();
+  diagnostics.clearDiagnostics();
+  diagnostics.dispose();
   statusbar.dispose();
 }
 
@@ -155,6 +158,7 @@ async function processActiveFile(
       const filtered = filterIgnored(packages, ignored);
       setDecorations(fileName, filtered);
       statusbar.setFileCost(fileName, filtered);
+      diagnostics.updateDiagnostics(fileName, filtered);
     });
     emitter.on('log', (log: string) => logger.log(log));
     emitters[fileName] = emitter;
