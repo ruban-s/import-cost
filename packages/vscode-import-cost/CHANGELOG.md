@@ -1,5 +1,12 @@
 # Changes
 
+## 5.5.1
+
+- Faster cold open: drop 500ms debounce, 200ms activation, and 100ms editor-switch delays
+- Show `⚠ bundle failed` decoration with hover error instead of silent hide
+- Failed bundles retry on next call instead of being cached as zero
+- Halve package.json reads by combining version + sideEffects lookup
+
 ## 5.5.0
 
 - Add **watch mode** — `--watch` flag re-scans files on changes, live terminal output during development
