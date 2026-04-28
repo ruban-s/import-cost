@@ -2,7 +2,24 @@ import { EventEmitter } from 'events';
 import { cleanup, clearSizeCache, getSize } from './package-info';
 import { getPackages } from './parser';
 import type { ImportCostConfig, Lang, PackageInfo } from './types';
-import { getPackageVersion, getSideEffects } from './utils';
+import { getPackageJson } from './utils';
+
+function getPkgName(pkg: PackageInfo): string {
+  const parts = pkg.name.split('/');
+  let name = parts.shift()!;
+  if (name.startsWith('@')) name = `${name}/${parts.shift()}`;
+  return name;
+}
+
+async function resolveVersionAndSideEffects(pkg: PackageInfo): Promise<void> {
+  try {
+    const json = await getPackageJson(pkg);
+    pkg.version = `${getPkgName(pkg)}@${json.version}`;
+    pkg.sideEffects = json.sideEffects;
+  } catch {
+    pkg.version = null as unknown as string;
+  }
+}
 
 export { DebounceError } from './debounce-promise';
 export { findIgnoreFile, isIgnored, loadIgnoreFile } from './ignore';
@@ -34,12 +51,7 @@ export async function importCostAsync(
   let imports = getPackages(fileName, text, language).filter(
     (pkg: PackageInfo) => !pkg.name.startsWith('.'),
   );
-  await Promise.allSettled(
-    imports.map(async pkg => {
-      pkg.version = await getPackageVersion(pkg);
-      pkg.sideEffects = await getSideEffects(pkg);
-    }),
-  );
+  await Promise.allSettled(imports.map(resolveVersionAndSideEffects));
   imports = imports.filter(pkg => !!pkg.version);
   const results = await Promise.all(imports.map(pkg => getSize(pkg, config)));
   return results;
@@ -63,12 +75,7 @@ export function importCost(
         (packageInfo: PackageInfo) => !packageInfo.name.startsWith('.'),
       );
       log(`Found ${imports.length} packages`);
-      await Promise.allSettled(
-        imports.map(async pkg => {
-          pkg.version = await getPackageVersion(pkg);
-          pkg.sideEffects = await getSideEffects(pkg);
-        }),
-      );
+      await Promise.allSettled(imports.map(resolveVersionAndSideEffects));
       imports = imports.filter(pkg => {
         log(`${pkg.version ? 'Found' : 'Skip'}: ${JSON.stringify(pkg)}`);
         return !!pkg.version;

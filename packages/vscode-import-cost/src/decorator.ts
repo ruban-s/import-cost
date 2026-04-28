@@ -253,13 +253,43 @@ function buildDecorationArray(fileName: string): vscode.DecorationOptions[] {
   const { showCalculatingDecoration } =
     vscode.workspace.getConfiguration('importCost');
   Object.entries(decorations[fileName]).forEach(([line, packageInfo]) => {
-    if (packageInfo.size === undefined && showCalculatingDecoration) {
+    if (packageInfo.error) {
+      arr.push(failedDecoration(Number(line), packageInfo));
+    } else if (packageInfo.size === undefined && showCalculatingDecoration) {
       arr.push(decoration(Number(line), undefined));
     } else if ((packageInfo.size || 0) > 0) {
       arr.push(decoration(Number(line), packageInfo));
     }
   });
   return arr;
+}
+
+function failedDecoration(
+  line: number,
+  packageInfo: PackageInfo,
+): vscode.DecorationOptions {
+  const configuration = vscode.workspace.getConfiguration('importCost');
+  const errMsg =
+    (packageInfo.error as Error)?.message || String(packageInfo.error);
+  const md = new vscode.MarkdownString();
+  md.appendMarkdown(`**${packageInfo.name}** — bundle failed\n\n`);
+  md.appendCodeblock(errMsg, 'text');
+  return {
+    renderOptions: {
+      dark: { after: { color: configuration.largePackageDarkColor } },
+      light: { after: { color: configuration.largePackageLightColor } },
+      after: {
+        contentText: '⚠ bundle failed',
+        margin: `0 0 0 ${configuration.margin}rem`,
+        fontStyle: configuration.fontStyle,
+      },
+    },
+    range: new vscode.Range(
+      new vscode.Position(line - 1, 1024),
+      new vscode.Position(line - 1, 1024),
+    ),
+    hoverMessage: md,
+  };
 }
 
 let decorationsDebounce: ReturnType<typeof setTimeout>;
