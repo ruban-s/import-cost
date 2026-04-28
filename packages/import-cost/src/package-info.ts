@@ -8,7 +8,6 @@ import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
 const { version: icVersion } = require('../package.json');
 
 let sizeCache: Record<string, SizeResult | Promise<SizeResult>> = {};
-const failedSize: SizeResult = { size: 0, gzip: 0, brotli: 0 };
 export const cacheFileName = path.join(os.tmpdir(), `ic-cache-${icVersion}`);
 
 export async function getSize(
@@ -21,17 +20,11 @@ export async function getSize(
     try {
       sizeCache[key] = sizeCache[key] || calcPackageSize(pkg, config);
       sizeCache[key] = await sizeCache[key];
-      if (config.debounceDelay !== 0) {
-        await saveSizeCache();
-      }
+      await saveSizeCache();
     } catch (e) {
-      if (e === DebounceError) {
-        delete sizeCache[key];
-        throw e;
-      } else {
-        sizeCache[key] = failedSize;
-        return { ...pkg, ...sizeCache[key], error: e as Error };
-      }
+      delete sizeCache[key];
+      if (e === DebounceError) throw e;
+      return { ...pkg, size: 0, gzip: 0, brotli: 0, error: e as Error };
     }
   }
   return { ...pkg, ...(sizeCache[key] as SizeResult) };

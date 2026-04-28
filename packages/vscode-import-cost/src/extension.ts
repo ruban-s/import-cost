@@ -39,6 +39,16 @@ const SUPPORTED_LANGUAGES = [
 
 let isActive = true;
 const emitters: Record<string, EventEmitter> = {};
+const processTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+
+function scheduleProcessActiveFile(document: vscode.TextDocument): void {
+  const { fileName } = document;
+  clearTimeout(processTimers[fileName]);
+  processTimers[fileName] = setTimeout(() => {
+    delete processTimers[fileName];
+    processActiveFile(document);
+  }, 150);
+}
 
 export function activate(context: vscode.ExtensionContext) {
   try {
@@ -67,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
         if (isPackageJson(ev.document)) {
           processPackageJson(ev.document);
         } else {
-          processActiveFile(ev.document);
+          scheduleProcessActiveFile(ev.document);
         }
       }),
       vscode.window.onDidChangeActiveTextEditor(editor => {
@@ -82,7 +92,7 @@ export function activate(context: vscode.ExtensionContext) {
           onDidChangeActiveEditor(editor);
           statusbar.onEditorChange(editor.document.fileName);
           if (!hasDecorations(editor.document.fileName)) {
-            setTimeout(() => processActiveFile(editor.document), 100);
+            processActiveFile(editor.document);
           }
         }
       }),
@@ -116,14 +126,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }),
     );
-    setTimeout(() => {
-      const doc = vscode.window.activeTextEditor?.document;
-      if (isPackageJson(doc)) {
-        processPackageJson(doc!);
-      } else {
-        processActiveFile(doc);
-      }
-    }, 200);
+    const doc = vscode.window.activeTextEditor?.document;
+    if (isPackageJson(doc)) {
+      processPackageJson(doc!);
+    } else {
+      processActiveFile(doc);
+    }
   } catch (e) {
     logger.log(`wrapping error: ${e}`);
   }
@@ -148,7 +156,11 @@ async function processActiveFile(
     emitters[fileName]?.removeAllListeners();
 
     const configuration = vscode.workspace.getConfiguration('importCost');
-    const config = { concurrent: false, maxCallTime: configuration.timeout };
+    const config = {
+      concurrent: false,
+      maxCallTime: configuration.timeout,
+      debounceDelay: 0,
+    };
     const settingsIgnored: string[] = configuration.ignoredPackages || [];
     const workspaceRoot =
       vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
