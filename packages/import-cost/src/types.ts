@@ -7,6 +7,7 @@ export interface PackageInfo {
   size?: number;
   gzip?: number;
   brotli?: number;
+  estimated?: boolean;
   sideEffects?: boolean | string[];
   error?: Error;
 }
@@ -15,12 +16,14 @@ export interface SizeResult {
   size: number;
   gzip: number;
   brotli: number;
+  estimated?: boolean;
 }
 
 export interface ImportCostConfig {
   maxCallTime: number;
   concurrent: boolean;
   debounceDelay?: number;
+  cacheDir?: string;
 }
 
 export const Lang = {

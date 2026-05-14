@@ -120,7 +120,7 @@ export async function calcSize(
     try {
       const fallback = estimatePackageSize(packageInfo);
       if (fallback) {
-        callback(null, fallback);
+        callback(null, { ...fallback, estimated: true });
         return;
       }
     } catch {

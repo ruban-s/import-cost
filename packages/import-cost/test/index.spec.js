@@ -1,7 +1,8 @@
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { expect } = require('chai');
-const { importCost: runner, cleanup, Lang, clearSizeCache, cacheFileName, DebounceError } = require('../dist/index.js');
+const { importCost: runner, cleanup, Lang, clearSizeCache, cacheFileName, DebounceError, getPackages, setCacheDir, importCostAsync } = require('../dist/index.js');
 
 function fixture(fileName) {
   return path.join(__dirname, 'fixtures', fileName);
@@ -242,6 +243,10 @@ describe('importCost', () => {
       const pkg = await check('failed-bundle.js', 'jest');
       expect(pkg.size).to.be.above(0);
     });
+    it('marks fallback sizes as estimated', async () => {
+      const pkg = await check('failed-bundle.js', 'jest');
+      expect(pkg.estimated).to.equal(true);
+    });
     it('errors on broken javascript', () => {
       return expect(check('incomplete.bad.js')).to.be.rejected;
     });
@@ -257,6 +262,61 @@ describe('importCost', () => {
     it('should handle timeouts gracefully', async () => {
       const pkg = await check('require.js', 'chai', { maxCallTime: 1 });
       expect(pkg.size).to.be.above(0);
+    });
+  });
+
+  describe('multi-line imports', () => {
+    it('detects line number using offset for static imports', () => {
+      const source = `import {\n  expect\n} from 'chai';\n`;
+      const packages = getPackages(fixture('import.js'), source, Lang.JAVASCRIPT);
+      expect(packages).to.have.length(1);
+      expect(packages[0].name).to.equal('chai');
+      expect(packages[0].line).to.equal(1);
+    });
+    it('detects line number for imports not on first line', () => {
+      const source = `const x = 1;\nconst y = 2;\nimport chai from 'chai';\n`;
+      const packages = getPackages(fixture('import.js'), source, Lang.JAVASCRIPT);
+      const pkg = packages.find(p => p.name === 'chai');
+      expect(pkg).to.not.be.undefined;
+      expect(pkg.line).to.equal(3);
+    });
+    it('handles require on correct line', () => {
+      const source = `// comment\n// another\nconst x = require('chai');\n`;
+      const packages = getPackages(fixture('require.js'), source, Lang.JAVASCRIPT);
+      const pkg = packages.find(p => p.name === 'chai');
+      expect(pkg).to.not.be.undefined;
+      expect(pkg.line).to.equal(3);
+    });
+  });
+
+  describe('cache eviction', () => {
+    it('persists cache to custom directory via setCacheDir', async () => {
+      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ic-test-'));
+      try {
+        setCacheDir(tmpDir);
+        await verify('import.js');
+        const files = fs.readdirSync(tmpDir);
+        expect(files.some(f => f.startsWith('ic-cache-'))).to.be.true;
+      } finally {
+        setCacheDir(os.tmpdir());
+        fs.rmSync(tmpDir, { recursive: true, force: true });
+      }
+    });
+  });
+
+  describe('importCostAsync', () => {
+    it('returns results as a promise', async () => {
+      const content = fs.readFileSync(fixture('import.js'), 'utf-8');
+      const results = await importCostAsync(
+        fixture('import.js'),
+        content,
+        Lang.JAVASCRIPT,
+        { maxCallTime: 30000, concurrent: true, debounceDelay: 0 },
+      );
+      const pkg = results.find(r => r.name === 'chai');
+      expect(pkg).to.not.be.undefined;
+      expect(pkg.size).to.be.above(0);
+      expect(pkg.gzip).to.be.above(0);
     });
   });
 });

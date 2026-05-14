@@ -6,6 +6,7 @@ import { ALTERNATIVES } from './alternatives';
 
 const decorationType = vscode.window.createTextEditorDecorationType({});
 const decorations: Record<string, Record<number, PackageInfo>> = {};
+const previousDeps: Record<string, Record<string, string>> = {};
 let activeEditor: vscode.TextEditor | null = null;
 
 export function isPackageJson(document?: vscode.TextDocument): boolean {
@@ -46,7 +47,34 @@ export function processPackageJson(document: vscode.TextDocument): void {
     }
   }
 
-  const importStatements = depNames
+  const prev = previousDeps[fileName] || {};
+  const changedDeps = depNames.filter(
+    name => !prev[name] || prev[name] !== allDeps[name],
+  );
+  const removedDeps = Object.keys(prev).filter(
+    name => !allDeps[name] || name.startsWith('@types/'),
+  );
+
+  previousDeps[fileName] = { ...allDeps };
+
+  if (removedDeps.length > 0 && decorations[fileName]) {
+    for (const name of removedDeps) {
+      for (const [line, pkg] of Object.entries(decorations[fileName])) {
+        if (pkg.name === name) {
+          delete decorations[fileName][Number(line)];
+        }
+      }
+    }
+  }
+
+  const depsToCalculate =
+    Object.keys(prev).length === 0 ? depNames : changedDeps;
+  if (depsToCalculate.length === 0) {
+    applyDecorations(fileName);
+    return;
+  }
+
+  const importStatements = depsToCalculate
     .map(
       name =>
         `import * as _${name.replace(/[^a-zA-Z0-9]/g, '_')} from '${name}';`,
@@ -54,7 +82,7 @@ export function processPackageJson(document: vscode.TextDocument): void {
     .join('\n');
 
   const { timeout } = vscode.workspace.getConfiguration('importCost');
-  const config = { concurrent: false, maxCallTime: timeout || 20000 };
+  const config = { concurrent: true, maxCallTime: timeout || 20000 };
 
   const emitter = importCost(
     fileName,
@@ -63,7 +91,9 @@ export function processPackageJson(document: vscode.TextDocument): void {
     config,
   );
 
-  decorations[fileName] = {};
+  if (!decorations[fileName]) {
+    decorations[fileName] = {};
+  }
   const seen = new Set<string>();
 
   emitter.on('calculated', (pkg: PackageInfo) => {
@@ -76,8 +106,7 @@ export function processPackageJson(document: vscode.TextDocument): void {
   });
 
   emitter.on('done', () => {
-    // Show "not found" for packages that were skipped (version lookup failed)
-    for (const name of depNames) {
+    for (const name of depsToCalculate) {
       if (seen.has(name)) continue;
       const line = depLines[name];
       if (!line) continue;
@@ -110,6 +139,10 @@ function getDecorationColor(pkg: PackageInfo) {
   });
 
   if (pkg.error || !pkg.size) {
+    return color('#888888', '#999999');
+  }
+
+  if ((pkg as any).estimated) {
     return color('#888888', '#999999');
   }
 
@@ -146,11 +179,13 @@ function buildLabel(pkg: PackageInfo): string {
     return '~ bundle failed';
   }
 
+  const estimated = (pkg as any).estimated;
+  const prefix = estimated ? '~' : '';
   const configuration = vscode.workspace.getConfiguration('importCost');
-  const size = filesize(pkg.size, { standard: 'jedec' });
-  const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
+  const size = prefix + filesize(pkg.size, { standard: 'jedec' });
+  const gzip = prefix + filesize(pkg.gzip!, { standard: 'jedec' });
   const brotli = pkg.brotli
-    ? filesize(pkg.brotli, { standard: 'jedec' })
+    ? prefix + filesize(pkg.brotli, { standard: 'jedec' })
     : null;
   const mode = configuration.bundleSizeDecoration;
 
@@ -200,6 +235,12 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
       md.appendMarkdown(`${alt.reason}\n`);
     }
     return md;
+  }
+
+  if ((pkg as any).estimated) {
+    md.appendMarkdown(
+      `*⚠ Estimated size — bundling failed, showing entry file size.*\n\n`,
+    );
   }
 
   const size = filesize(pkg.size, { standard: 'jedec' });
