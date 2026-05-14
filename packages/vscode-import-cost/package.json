@@ -198,6 +198,10 @@
       {
         "command": "importCost.clearCache",
         "title": "Import Cost: Clear Cache"
+      },
+      {
+        "command": "importCost.optimizationReport",
+        "title": "Import Cost: Optimization Report"
       }
     ]
   },
