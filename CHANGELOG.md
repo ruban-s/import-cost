@@ -4,6 +4,13 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.8.0] - 2026-05-14
+
+### Added
+
+- **Optimization report** — new command `Import Cost: Optimization Report` opens a webview panel with ranked bundle savings: lighter alternatives, duplicate packages, wildcard import conversions. Click any file link to jump to the import.
+- **Duplicate capability detection** — warns when the project uses multiple packages for the same purpose (e.g. two date libraries, two HTTP clients). Covers 10 categories.
+
 ## [5.7.0] - 2026-05-14
 
 ### Added

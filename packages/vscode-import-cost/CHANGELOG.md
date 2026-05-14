@@ -1,5 +1,10 @@
 # Changes
 
+## 5.8.0
+
+- Add **optimization report** — new command opens a webview panel with ranked bundle savings, clickable file links, and potential KB savings
+- Add **duplicate capability detection** — warns when project uses multiple packages for the same purpose (e.g. moment + dayjs)
+
 ## 5.7.0
 
 - Add **workspace-aware import sharing** — decorations show `· shared N files` for packages imported across multiple files
