@@ -1,12 +1,19 @@
 import { filesize as fileSize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { ALTERNATIVES } from './alternatives';
 import logger from './logger';
+import type { WorkspaceImportIndex } from './workspace-index';
 
 const decorations: Record<string, Record<number, PackageInfo>> = {};
 const decorationType = vscode.window.createTextEditorDecorationType({});
 let activeEditor = vscode.window.activeTextEditor;
+let workspaceIndex: WorkspaceImportIndex | null = null;
+
+export function setWorkspaceIndex(index: WorkspaceImportIndex | null): void {
+  workspaceIndex = index;
+}
 
 export function setDecorations(
   fileName: string,
@@ -112,6 +119,20 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   } else if (treeshakeHint) {
     label = `${label} — ${treeshakeHint}`;
   }
+
+  if (
+    workspaceIndex?.isReady &&
+    configuration.get('showWorkspaceSharing', true)
+  ) {
+    const sharing = workspaceIndex.getPackageSharing(
+      packageInfo.name,
+      packageInfo.fileName,
+    );
+    if (sharing.totalFiles > 1) {
+      label = `${label} · shared ${sharing.totalFiles} files`;
+    }
+  }
+
   return text(label);
 }
 
@@ -289,6 +310,31 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     md.appendMarkdown(`${alt.reason}\n`);
   }
 
+  if (workspaceIndex?.isReady) {
+    const sharing = workspaceIndex.getPackageSharing(pkg.name, pkg.fileName);
+    md.appendMarkdown(`\n---\n`);
+    if (sharing.totalFiles > 1) {
+      md.appendMarkdown(
+        `**Workspace usage:** imported in ${sharing.totalFiles} files\n\n`,
+      );
+      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
+      const shown = sharing.otherFiles.slice(0, 5);
+      for (const f of shown) {
+        md.appendMarkdown(`- \`${root ? path.relative(root, f) : f}\`\n`);
+      }
+      if (sharing.otherFiles.length > 5) {
+        md.appendMarkdown(`- *...and ${sharing.otherFiles.length - 5} more*\n`);
+      }
+      md.appendMarkdown(
+        `\n*Shared dependency — marginal cost in this file is ~0 KB.*\n`,
+      );
+    } else {
+      md.appendMarkdown(
+        `**Workspace usage:** unique to this file — full bundle cost applies.\n`,
+      );
+    }
+  }
+
   return md;
 }
 
@@ -390,4 +436,8 @@ export function getDecorationsForFile(
   fileName: string,
 ): Record<number, PackageInfo> | undefined {
   return decorations[fileName];
+}
+
+export function refreshDecorationsForFile(fileName: string): void {
+  flushDecorationsDebounced(fileName);
 }

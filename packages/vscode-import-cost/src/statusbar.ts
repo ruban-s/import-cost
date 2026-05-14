@@ -1,8 +1,18 @@
 import { filesize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
+import {
+  normalizePackageName,
+  type WorkspaceImportIndex,
+} from './workspace-index';
 
 let statusBarItem: vscode.StatusBarItem;
+let workspaceIndex: WorkspaceImportIndex | null = null;
+
+export function setWorkspaceIndex(index: WorkspaceImportIndex | null): void {
+  workspaceIndex = index;
+}
+
 const fileTotals: Record<
   string,
   {
@@ -11,6 +21,9 @@ const fileTotals: Record<
     brotli: number;
     count: number;
     overBudget: number;
+    uniqueTotal: number;
+    uniqueGzip: number;
+    uniqueCount: number;
   }
 > = {};
 
@@ -36,7 +49,36 @@ export function setFileCost(fileName: string, packages: PackageInfo[]): void {
     budget > 0
       ? packages.filter(pkg => (pkg.size || 0) / 1024 > budget).length
       : 0;
-  fileTotals[fileName] = { total, gzip, brotli, count, overBudget };
+
+  let uniqueTotal = total;
+  let uniqueGzip = gzip;
+  let uniqueCount = count;
+
+  const idx = workspaceIndex;
+  if (idx?.isReady) {
+    const uniquePkgs = packages.filter(pkg => {
+      if ((pkg.size || 0) <= 0) return false;
+      const sharing = idx.getPackageSharing(
+        normalizePackageName(pkg.name),
+        fileName,
+      );
+      return sharing.isUnique;
+    });
+    uniqueTotal = uniquePkgs.reduce((sum, pkg) => sum + (pkg.size || 0), 0);
+    uniqueGzip = uniquePkgs.reduce((sum, pkg) => sum + (pkg.gzip || 0), 0);
+    uniqueCount = uniquePkgs.length;
+  }
+
+  fileTotals[fileName] = {
+    total,
+    gzip,
+    brotli,
+    count,
+    overBudget,
+    uniqueTotal,
+    uniqueGzip,
+    uniqueCount,
+  };
   if (vscode.window.activeTextEditor?.document.fileName === fileName) {
     update(fileName);
   }
@@ -49,7 +91,8 @@ function update(fileName: string | null): void {
     statusBarItem.tooltip = 'No imports calculated';
     return;
   }
-  const { total, gzip, brotli, count, overBudget } = fileTotals[fileName];
+  const { total, gzip, brotli, count, overBudget, uniqueTotal, uniqueCount } =
+    fileTotals[fileName];
   if (total === 0) {
     statusBarItem.text = '$(package) No imports';
     statusBarItem.tooltip = 'No third-party imports found';
@@ -59,12 +102,23 @@ function update(fileName: string | null): void {
   const gzipStr = filesize(gzip, { standard: 'jedec' });
   const brotliStr = brotli ? filesize(brotli, { standard: 'jedec' }) : null;
   const icon = overBudget > 0 ? '$(warning)' : '$(package)';
-  statusBarItem.text = `${icon} Σ ${sizeStr}`;
+
+  if (uniqueTotal < total) {
+    const uniqueStr = filesize(uniqueTotal, { standard: 'jedec' });
+    statusBarItem.text = `${icon} Σ ${sizeStr} (${uniqueStr} unique)`;
+  } else {
+    statusBarItem.text = `${icon} Σ ${sizeStr}`;
+  }
+
   let tip = `Total: ${sizeStr} (gzip: ${gzipStr}`;
   if (brotliStr) tip += `, brotli: ${brotliStr}`;
   tip += `) — ${count} import${count !== 1 ? 's' : ''}`;
   if (overBudget > 0) {
     tip += `\n⚠ ${overBudget} import${overBudget !== 1 ? 's' : ''} over budget`;
+  }
+  if (uniqueTotal < total) {
+    const sharedCount = count - uniqueCount;
+    tip += `\n📦 ${uniqueCount} unique, ${sharedCount} shared with other files`;
   }
   statusBarItem.tooltip = tip;
 }
