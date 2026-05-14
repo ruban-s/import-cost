@@ -150,8 +150,8 @@ export function activate(context: vscode.ExtensionContext) {
         isActive = !isActive;
         if (isActive) {
           const doc = vscode.window.activeTextEditor?.document;
-          if (isPackageJson(doc)) {
-            processPackageJson(doc!);
+          if (doc && isPackageJson(doc)) {
+            processPackageJson(doc);
           } else {
             processActiveFile(doc);
           }
@@ -177,8 +177,8 @@ export function activate(context: vscode.ExtensionContext) {
       }),
     );
     const doc = vscode.window.activeTextEditor?.document;
-    if (isPackageJson(doc)) {
-      processPackageJson(doc!);
+    if (doc && isPackageJson(doc)) {
+      processPackageJson(doc);
     } else {
       processActiveFile(doc);
     }
@@ -208,7 +208,8 @@ export function deactivate(): void {
 async function processActiveFile(
   document?: vscode.TextDocument,
 ): Promise<void> {
-  if (isActive && document && language(document)) {
+  const lang = document ? language(document) : undefined;
+  if (isActive && document && lang) {
     const { fileName } = document;
     emitters[fileName]?.removeAllListeners();
 
@@ -224,7 +225,7 @@ async function processActiveFile(
     const fileIgnored = workspaceRoot ? loadIgnoreFile(workspaceRoot) : [];
     const ignorePatterns = [...settingsIgnored, ...fileIgnored];
     const text = document.getText();
-    const emitter = importCost(fileName, text, language(document)!, config);
+    const emitter = importCost(fileName, text, lang, config);
     emitter.on('error', (e: Error) => logger.log(`importCost error: ${e}`));
     emitter.on('start', (packages: PackageInfo[]) => {
       const filtered = filterIgnored(packages, ignorePatterns);
@@ -250,7 +251,7 @@ async function processActiveFile(
       statusbar.setFileCost(fileName, filtered);
       diagnostics.updateDiagnostics(fileName, filtered);
       if (workspaceIndex) {
-        workspaceIndex.updateFile(fileName, text, language(document)!);
+        workspaceIndex.updateFile(fileName, text, lang);
       }
     });
     emitter.on('log', (log: string) => logger.log(log));
