@@ -177,6 +177,16 @@
           "items": {
             "type": "string"
           }
+        },
+        "importCost.workspaceAwareness": {
+          "type": "boolean",
+          "default": true,
+          "description": "Track imports across the workspace to show which packages are shared between files"
+        },
+        "importCost.showWorkspaceSharing": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show 'shared N files' tag on inline decorations for packages imported in multiple files"
         }
       }
     },

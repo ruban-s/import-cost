@@ -14,9 +14,12 @@ import {
   calculated,
   clearDecorations,
   clearDecorationsForFile,
+  getDecorationsForFile,
   hasDecorations,
   onDidChangeActiveEditor,
+  refreshDecorationsForFile,
   setDecorations,
+  setWorkspaceIndex as setDecoratorIndex,
 } from './decorator';
 import * as diagnostics from './diagnostics';
 import logger from './logger';
@@ -28,6 +31,7 @@ import {
   processPackageJson,
 } from './package-json-cost';
 import * as statusbar from './statusbar';
+import { WorkspaceImportIndex } from './workspace-index';
 
 const SUPPORTED_LANGUAGES = [
   'javascript',
@@ -39,6 +43,7 @@ const SUPPORTED_LANGUAGES = [
 ];
 
 let isActive = true;
+let workspaceIndex: WorkspaceImportIndex | null = null;
 const emitters: Record<string, EventEmitter> = {};
 const processTimers: Record<string, ReturnType<typeof setTimeout>> = {};
 const previousImports: Record<string, Set<string>> = {};
@@ -68,6 +73,30 @@ export function activate(context: vscode.ExtensionContext) {
     logger.log('starting...');
     statusbar.init();
 
+    const configuration = vscode.workspace.getConfiguration('importCost');
+    if (configuration.get('workspaceAwareness', true)) {
+      workspaceIndex = new WorkspaceImportIndex();
+      setDecoratorIndex(workspaceIndex);
+      statusbar.setWorkspaceIndex(workspaceIndex);
+      context.subscriptions.push(workspaceIndex);
+
+      workspaceIndex.onDidUpdate(() => {
+        const doc = vscode.window.activeTextEditor?.document;
+        if (doc && !isPackageJson(doc) && hasDecorations(doc.fileName)) {
+          refreshDecorationsForFile(doc.fileName);
+          const decs = getDecorationsForFile(doc.fileName);
+          if (decs) {
+            const pkgs = Object.values(decs).filter(p => (p.size || 0) > 0);
+            statusbar.setFileCost(doc.fileName, pkgs);
+          }
+        }
+      });
+
+      if (vscode.workspace.workspaceFolders) {
+        workspaceIndex.init(vscode.workspace.workspaceFolders);
+      }
+    }
+
     const selector = SUPPORTED_LANGUAGES.map(lang => ({ language: lang }));
     context.subscriptions.push(
       vscode.languages.registerCodeActionsProvider(
@@ -95,6 +124,11 @@ export function activate(context: vscode.ExtensionContext) {
       }),
       vscode.workspace.onDidCloseTextDocument(document => {
         cleanupFile(document.fileName);
+      }),
+      vscode.workspace.onDidChangeWorkspaceFolders(() => {
+        if (workspaceIndex && vscode.workspace.workspaceFolders) {
+          workspaceIndex.init(vscode.workspace.workspaceFolders);
+        }
       }),
       vscode.window.onDidChangeActiveTextEditor(editor => {
         if (!editor?.document) return;
@@ -165,6 +199,10 @@ export function deactivate(): void {
   diagnostics.clearDiagnostics();
   diagnostics.dispose();
   statusbar.dispose();
+  workspaceIndex?.dispose();
+  workspaceIndex = null;
+  setDecoratorIndex(null);
+  statusbar.setWorkspaceIndex(null);
 }
 
 async function processActiveFile(
@@ -211,6 +249,9 @@ async function processActiveFile(
       setDecorations(fileName, filtered);
       statusbar.setFileCost(fileName, filtered);
       diagnostics.updateDiagnostics(fileName, filtered);
+      if (workspaceIndex) {
+        workspaceIndex.updateFile(fileName, text, language(document)!);
+      }
     });
     emitter.on('log', (log: string) => logger.log(log));
     emitters[fileName] = emitter;
