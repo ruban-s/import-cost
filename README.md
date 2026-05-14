@@ -1,107 +1,67 @@
 # Import Cost
 
-This extension will display inline in the editor the size of the imported package.
-The extension utilizes esbuild in order to detect the imported size.
+> Know the cost of every import before you ship.
 
-## What Changed from the Original
+**Import Cost** displays the bundle size of imported packages inline in your editor. It scans your imports, bundles each one with [esbuild](https://esbuild.github.io/), and shows the minified, gzipped, and brotli-compressed size — right next to the import statement.
 
-- **Language**: Rewritten from JavaScript to **TypeScript** across all packages
-- **Parser**: Replaced Babel with [SWC](https://swc.rs/) (Rust-based, 5-10x faster parsing)
-- **Bundler**: Replaced webpack with [esbuild](https://esbuild.github.io/) (Go-based, 10-100x faster bundling)
-- **Linter/Formatter**: Replaced ESLint + Prettier with [Biome](https://biomejs.dev/) (Rust-based, single tool)
-- **Extension build**: Replaced webpack with esbuild for building the VSCode extension
-- **VSIX optimization**: Platform-specific builds, deduplicated native binaries (43MB → 33MB)
-- **Removed**: cheerio, worker-farm, memfs, terser, native-fs-adapter, vscode-uri, fs-extra, and 12 browser polyfills
-- **Result**: Runtime dependencies reduced from 16 to 2 (`esbuild`, `@swc/core`)
+```typescript
+import { debounce } from 'lodash';     // 72.1 KB (gzip: 25.3 KB) · shared 4 files
+import { format } from 'date-fns';     // 12.4 KB (gzip: 4.1 KB)
+import express from 'express';         // 783 KB (gzip: 261 KB) — try named imports
+```
 
-## Project Structure
+## Packages
 
-This is an [npm workspaces](https://docs.npmjs.com/cli/v7/using-npm/workspaces) monorepo:
+| Package | Description | Version |
+|---------|-------------|---------|
+| [`import-cost-core`](packages/import-cost) | Core library and CLI | [![npm](https://img.shields.io/npm/v/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core) |
+| [`fast-import-cost`](packages/vscode-import-cost) | VS Code extension | [![VS Code](https://img.shields.io/visual-studio-marketplace/v/ruban-s.fast-import-cost.svg)](https://marketplace.visualstudio.com/items?itemName=ruban-s.fast-import-cost) |
+| [`coc-import-cost-fast`](packages/coc-import-cost) | coc.nvim extension | [![npm](https://img.shields.io/npm/v/coc-import-cost-fast.svg)](https://www.npmjs.com/package/coc-import-cost-fast) |
 
-- [`packages/import-cost`](packages/import-cost) — Core TypeScript module for calculating import sizes
-- [`packages/vscode-import-cost`](packages/vscode-import-cost) — VSCode extension (TypeScript)
-- [`packages/coc-import-cost`](packages/coc-import-cost) — [coc.nvim](https://github.com/neoclide/coc.nvim) extension for Vim/Neovim (TypeScript)
+## Key Features
 
-## Getting Started
+- **Inline size decorations** — see the cost of every `import` and `require` as you type
+- **Workspace-aware sharing** — shows `· shared N files` when a package is imported across multiple files, so you know its marginal cost is ~0
+- **Package.json cost view** — open any `package.json` to see sizes for all dependencies
+- **Size budgets** — set a max KB per import; violations show warnings in the editor and Problems panel
+- **Lighter alternatives** — hover tooltip suggests smaller replacements (moment → dayjs, lodash → lodash-es, etc.)
+- **Tree-shake hints** — suggests named imports when `import *` is used on large packages
+- **CLI for CI/CD** — `fast-import-cost check src/ --budget 100` fails builds when imports are too large
+- **Diff mode** — `fast-import-cost diff main` compares import costs between git branches
+
+## How It Works
+
+1. **Parse** — [es-module-lexer](https://github.com/nicolo-ribaudo/es-module-lexer) extracts all import/require statements (<1ms per file)
+2. **Resolve** — finds the installed package version via `require.resolve` (works with npm, pnpm, yarn, bun)
+3. **Bundle** — [esbuild](https://esbuild.github.io/) bundles and minifies each import in-process
+4. **Measure** — calculates raw, gzip, and brotli sizes
+5. **Cache** — results are cached by package name + version, persisted to disk
+
+## Development
 
 ```sh
-git clone <your-fork-url>
+git clone https://github.com/ruban-s/import-cost.git
+cd import-cost
 npm install
 ```
 
-## Commands
+| Command | Description |
+|---------|-------------|
+| `npm test` | Run all tests |
+| `npm run build` | Build all packages |
+| `npm run lint` | Lint with Biome |
+| `npm test -w import-cost-core` | Core tests only |
+| `cd packages/vscode-import-cost && npm run typecheck` | Type-check extension |
+| `cd packages/vscode-import-cost && npm run build` | Build + package VSIX |
 
-```sh
-# Run all tests
-npm test
+Changes to the core library are immediately available in the extension via npm workspaces symlink.
 
-# Build all packages
-npm run build
-
-# Run import-cost tests only
-npm test -w import-cost
-
-# Run a single test
-cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.js 'test/**/*.spec.js' --grep "pattern"
-
-# Type check
-cd packages/vscode-import-cost && npm run typecheck
-
-# Lint (Biome)
-npm run lint
-
-# Auto-fix lint issues
-npm run lint:fix
-
-# Build VSCode extension (current platform)
-cd packages/vscode-import-cost && node build.mjs
-
-# Build VSCode extension (specific platform)
-cd packages/vscode-import-cost && node build.mjs --target=darwin-arm64
-
-# Package VSIX
-cd packages/vscode-import-cost && npm run build
-```
-
-## Applying Changes
-
-Thanks to npm workspaces, `vscode-import-cost` has a symlink to the local `import-cost` package. Changes to the core module are immediately visible without re-publishing.
-
-Verify the link exists:
-
-```sh
-ls -la packages/vscode-import-cost/node_modules | grep import-cost
-```
-
-If the link is missing:
-
-```sh
-git clean -xdf
-npm install
-```
-
-## Publishing
-
-Publish the core module first (if changed):
-
-```sh
-cd packages/import-cost
-npm version patch | minor | major
-git commit -a -m "releasing version X.X.X"
-git push
-npm publish
-```
-
-Then publish the extension:
-
-```sh
-cd packages/vscode-import-cost
-npm version patch | minor | major
-git commit -a -m "releasing version X.X.X"
-git push
-npx @vscode/vsce publish
-```
+See [RELEASE.md](RELEASE.md) for the release checklist.
 
 ## Credits
 
-Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
+Forked from [wix/import-cost](https://github.com/wix/import-cost). Rewritten in TypeScript with esbuild, es-module-lexer, and Biome — reducing runtime dependencies from 16 to 3.
+
+## License
+
+MIT
