@@ -1,5 +1,17 @@
 # Changes
 
+## 5.6.0
+
+- Fix **memory leak** — clean up emitters, timers, and decorations when files are closed
+- Enable **parallel bundling** in IDE — concurrent import calculations for faster results
+- **Smart debouncing** — track previous imports per file, skip recalculating unchanged ones
+- **Incremental package.json** — only recalculate changed/added dependencies, not all
+- **Estimated size indicator** — show `~` prefix and grey color when bundling falls back to entry file size
+- **Export analysis** in hover — show named import count, suggest named imports for wildcard on large packages
+- **Multi-line import detection** — use es-module-lexer byte offsets instead of string search
+- **LRU cache eviction** — cap at 5000 entries, atomic write-rename for crash safety, configurable cache directory
+- **Platform-specific VSIX** — `npm run build:platform` generates per-platform packages (~5x smaller)
+
 ## 5.5.1
 
 - Faster cold open: drop 500ms debounce, 200ms activation, and 100ms editor-switch delays
