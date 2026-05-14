@@ -69,6 +69,10 @@ function update(fileName: string | null): void {
   statusBarItem.tooltip = tip;
 }
 
+export function clearFileCost(fileName: string): void {
+  delete fileTotals[fileName];
+}
+
 export function onEditorChange(fileName: string | null): void {
   update(fileName);
 }

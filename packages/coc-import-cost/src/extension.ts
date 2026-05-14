@@ -19,6 +19,8 @@ export function activate(context: ExtensionContext) {
       { language: 'javascript' },
       { language: 'javascript.jsx' },
       { language: 'javascriptreact' },
+      { language: 'vue' },
+      { language: 'svelte' },
     ],
     new ImportCostCodeLensProvider(isActive),
   );

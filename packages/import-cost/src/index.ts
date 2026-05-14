@@ -28,6 +28,7 @@ export {
   cleanup,
   clearSizeCache,
   getSize,
+  setCacheDir,
 } from './package-info';
 export { getPackages } from './parser';
 export type { ImportCostConfig, PackageInfo, SizeResult } from './types';

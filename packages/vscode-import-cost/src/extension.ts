@@ -13,6 +13,7 @@ import { ImportCostCodeActionProvider } from './code-actions';
 import {
   calculated,
   clearDecorations,
+  clearDecorationsForFile,
   hasDecorations,
   onDidChangeActiveEditor,
   setDecorations,
@@ -40,6 +41,7 @@ const SUPPORTED_LANGUAGES = [
 let isActive = true;
 const emitters: Record<string, EventEmitter> = {};
 const processTimers: Record<string, ReturnType<typeof setTimeout>> = {};
+const previousImports: Record<string, Set<string>> = {};
 
 function scheduleProcessActiveFile(document: vscode.TextDocument): void {
   const { fileName } = document;
@@ -48,6 +50,17 @@ function scheduleProcessActiveFile(document: vscode.TextDocument): void {
     delete processTimers[fileName];
     processActiveFile(document);
   }, 150);
+}
+
+function cleanupFile(fileName: string): void {
+  emitters[fileName]?.removeAllListeners();
+  delete emitters[fileName];
+  clearTimeout(processTimers[fileName]);
+  delete processTimers[fileName];
+  delete previousImports[fileName];
+  clearDecorationsForFile(fileName);
+  diagnostics.clearDiagnosticsForFile(fileName);
+  statusbar.clearFileCost(fileName);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -79,6 +92,9 @@ export function activate(context: vscode.ExtensionContext) {
         } else {
           scheduleProcessActiveFile(ev.document);
         }
+      }),
+      vscode.workspace.onDidCloseTextDocument(document => {
+        cleanupFile(document.fileName);
       }),
       vscode.window.onDidChangeActiveTextEditor(editor => {
         if (!editor?.document) return;
@@ -139,6 +155,9 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate(): void {
+  for (const fileName of Object.keys(emitters)) {
+    cleanupFile(fileName);
+  }
   cleanup();
   logger.dispose();
   clearDecorations();
@@ -157,7 +176,7 @@ async function processActiveFile(
 
     const configuration = vscode.workspace.getConfiguration('importCost');
     const config = {
-      concurrent: false,
+      concurrent: true,
       maxCallTime: configuration.timeout,
       debounceDelay: 0,
     };
@@ -170,7 +189,17 @@ async function processActiveFile(
     const emitter = importCost(fileName, text, language(document)!, config);
     emitter.on('error', (e: Error) => logger.log(`importCost error: ${e}`));
     emitter.on('start', (packages: PackageInfo[]) => {
-      setDecorations(fileName, filterIgnored(packages, ignorePatterns));
+      const filtered = filterIgnored(packages, ignorePatterns);
+      const currentNames = new Set(filtered.map(p => `${p.name}@${p.line}`));
+      const prev = previousImports[fileName];
+
+      if (prev) {
+        const unchanged = filtered.filter(p => prev.has(`${p.name}@${p.line}`));
+        setDecorations(fileName, filtered, unchanged);
+      } else {
+        setDecorations(fileName, filtered);
+      }
+      previousImports[fileName] = currentNames;
     });
     emitter.on('calculated', (packageInfo: PackageInfo) => {
       if (!isIgnored(packageInfo.name, ignorePatterns)) {

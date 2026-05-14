@@ -195,6 +195,7 @@
     "typecheck": "tsc --noEmit",
     "pretest": "node build.mjs",
     "build": "node build.mjs && npx @vscode/vsce package --no-dependencies",
+    "build:platform": "node build-platforms.mjs",
     "test": "node ./test/index.js"
   },
   "dependencies": {

@@ -39,6 +39,10 @@ export function clearDiagnostics(): void {
   collection.clear();
 }
 
+export function clearDiagnosticsForFile(fileName: string): void {
+  collection.delete(vscode.Uri.file(fileName));
+}
+
 export function dispose(): void {
   collection.dispose();
 }

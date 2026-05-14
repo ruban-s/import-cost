@@ -11,9 +11,27 @@ let activeEditor = vscode.window.activeTextEditor;
 export function setDecorations(
   fileName: string,
   packages: PackageInfo[],
+  unchanged?: PackageInfo[],
 ): void {
-  decorations[fileName] = {};
-  packages.forEach(packageInfo => decorate(fileName, packageInfo));
+  if (unchanged) {
+    const prev = decorations[fileName] || {};
+    decorations[fileName] = {};
+    for (const pkg of unchanged) {
+      if (prev[pkg.line] && prev[pkg.line].size !== undefined) {
+        decorations[fileName][pkg.line] = prev[pkg.line];
+      } else {
+        decorate(fileName, pkg);
+      }
+    }
+    for (const pkg of packages) {
+      if (!decorations[fileName][pkg.line]) {
+        decorate(fileName, pkg);
+      }
+    }
+  } else {
+    decorations[fileName] = {};
+    packages.forEach(packageInfo => decorate(fileName, packageInfo));
+  }
   flushDecorationsDebounced(fileName);
 }
 
@@ -61,10 +79,12 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   if (!packageInfo) {
     return text('Calculating...');
   }
-  const size = fileSize(packageInfo.size!, { standard: 'jedec' });
-  const gzip = fileSize(packageInfo.gzip!, { standard: 'jedec' });
+  const estimated = (packageInfo as any).estimated;
+  const prefix = estimated ? '~' : '';
+  const size = prefix + fileSize(packageInfo.size!, { standard: 'jedec' });
+  const gzip = prefix + fileSize(packageInfo.gzip!, { standard: 'jedec' });
   const brotli = packageInfo.brotli
-    ? fileSize(packageInfo.brotli, { standard: 'jedec' })
+    ? prefix + fileSize(packageInfo.brotli, { standard: 'jedec' })
     : null;
   const treeshakeHint = getTreeshakeHint(packageInfo);
   const overBudget = isOverBudget(packageInfo);
@@ -83,7 +103,6 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   } else if (mode === 'compressed') {
     label = brotli ? `gzip: ${gzip} | brotli: ${brotli}` : `${gzip}`;
   } else {
-    // "both" (default) — minified + gzip + brotli
     label = brotli
       ? `${size} (gzip: ${gzip}, brotli: ${brotli})`
       : `${size} (gzipped: ${gzip})`;
@@ -137,6 +156,10 @@ function getDecorationColor(packageInfo: PackageInfo | undefined) {
     light: { after: { color: light } },
   });
 
+  if ((packageInfo as any)?.estimated) {
+    return color('#888888', '#999999');
+  }
+
   if (isOverBudget(packageInfo)) {
     return color(
       configuration.largePackageDarkColor,
@@ -187,7 +210,14 @@ function decoration(
   return dec;
 }
 
+function getImportSpecifierCount(importString: string): number | null {
+  const match = importString.match(/\{([^}]+)\}/);
+  if (!match) return null;
+  return match[1].split(',').filter(s => s.trim()).length;
+}
+
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
+  const estimated = (pkg as any).estimated;
   const size = fileSize(pkg.size!, { standard: 'jedec' });
   const gzip = fileSize(pkg.gzip!, { standard: 'jedec' });
   const gzipRatio = ((pkg.gzip! / pkg.size!) * 100).toFixed(0);
@@ -199,6 +229,13 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   md.appendMarkdown(
     `**${pkg.name}**${pkg.version ? ` \`${pkg.version.split('@').pop()}\`` : ''}\n\n`,
   );
+
+  if (estimated) {
+    md.appendMarkdown(
+      `*⚠ Estimated size — bundling failed, showing entry file size.*\n\n`,
+    );
+  }
+
   md.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
   md.appendMarkdown(`| Minified | ${size} |\n`);
   md.appendMarkdown(`| Gzipped | ${gzip} (${gzipRatio}% of minified) |\n`);
@@ -208,7 +245,6 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
   }
 
-  // Side effects badge
   if (pkg.sideEffects === false) {
     md.appendMarkdown(`| Tree-shakeable | Yes |\n`);
   } else if (
@@ -218,6 +254,15 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     md.appendMarkdown(`| Tree-shakeable | No (has side effects) |\n`);
   } else if (Array.isArray(pkg.sideEffects)) {
     md.appendMarkdown(`| Tree-shakeable | Partial |\n`);
+  }
+
+  const specCount = pkg.string ? getImportSpecifierCount(pkg.string) : null;
+  if (specCount !== null) {
+    md.appendMarkdown(`| Named imports | ${specCount} |\n`);
+  } else if (pkg.string?.startsWith('import * as ') && sizeKB > 50) {
+    md.appendMarkdown(
+      `| Import style | Wildcard (\`*\`) — named imports may reduce size |\n`,
+    );
   }
 
   if (isOverBudget(pkg)) {
@@ -326,6 +371,13 @@ export function clearDecorations(): void {
   vscode.window.visibleTextEditors.forEach(textEditor => {
     textEditor.setDecorations(decorationType, []);
   });
+}
+
+export function clearDecorationsForFile(fileName: string): void {
+  delete decorations[fileName];
+  vscode.window.visibleTextEditors
+    .filter(e => e.document.fileName === fileName)
+    .forEach(e => e.setDecorations(decorationType, []));
 }
 
 export function hasDecorations(fileName: string): boolean {
