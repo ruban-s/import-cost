@@ -4,50 +4,47 @@
 [![npm downloads](https://img.shields.io/npm/dm/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core)
 [![license](https://img.shields.io/npm/l/import-cost-core.svg)](https://github.com/ruban-s/import-cost/blob/master/LICENSE)
 
-Calculate the bundle size of imported packages in JavaScript and TypeScript — powered by **esbuild** and **es-module-lexer**.
+> Calculate the bundle size of imported packages — powered by esbuild and es-module-lexer.
 
 Find heavy imports, enforce size budgets, and optimize your bundle. Works as a **CLI tool** for CI/CD pipelines and as a **Node.js library** for building editor extensions.
 
-**Why import-cost-core?**
-- **Blazing fast** — scans 50+ files in under 1 second
+- **Fast** — scans 50+ files/second, bundles in-process with esbuild
 - **Accurate** — shows minified, gzipped, and brotli sizes
-- **CI-ready** — `--budget` flag fails builds when imports are too large
-- **Tree-shake aware** — tells you if a package supports tree-shaking
-- **Zero config** — works with npm, pnpm, yarn, and bun out of the box
+- **CI-ready** — `--budget` flag exits non-zero when imports exceed limits
+- **Tree-shake aware** — reports `sideEffects` status from package.json
+- **Zero config** — works with npm, pnpm, yarn, yarn PnP, and bun
 
 ## CLI
 
 ```bash
-# Install globally (provides the `fast-import-cost` command)
 npm install -g import-cost-core
+```
 
-# Or run directly with npx
-npx import-cost-core check src/
-
+```bash
 # Scan a directory
 fast-import-cost check src/
 
-# Set a budget — exits with code 1 if any import exceeds it
+# Enforce a size budget (exits 1 if exceeded)
 fast-import-cost check src/ --budget 100
 
-# JSON output for CI integration
+# JSON output for CI
 fast-import-cost check src/ --json --budget 50
 
-# Sort results by size (largest first)
+# Sort by size
 fast-import-cost check . --sort
 
-# Watch mode — re-scan on file changes
+# Watch mode
 fast-import-cost check src/ --watch
 
-# Ignore specific packages
+# Ignore packages
 fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
 
-# Compare import costs between git branches
+# Compare between git refs
 fast-import-cost diff main
 fast-import-cost diff main feature-branch
 ```
 
-Example output:
+**Example output:**
 
 ```
   Found 4 imports in 2 files
@@ -60,7 +57,7 @@ Example output:
   ⚠ 1 import(s) exceed the budget of 100 KB
 ```
 
-Diff output:
+**Diff output:**
 
 ```
   3 imports changed between main and HEAD
@@ -85,42 +82,39 @@ import type { PackageInfo } from 'import-cost-core';
 const emitter = importCost(fileName, fileContents, Lang.TYPESCRIPT);
 
 emitter.on('start', (packages: PackageInfo[]) => {
-  // mark lines as "calculating..."
+  // packages found, sizes being calculated
 });
 
 emitter.on('calculated', (pkg: PackageInfo) => {
-  // show size for this package
   console.log(pkg.name, pkg.size, pkg.gzip, pkg.brotli);
   console.log('tree-shakeable:', pkg.sideEffects === false);
 });
 
 emitter.on('done', (packages: PackageInfo[]) => {
-  // all packages calculated
+  // all sizes ready
 });
 
 emitter.on('error', (e: Error) => {
-  // parse error, usually safe to ignore
+  // parse error
 });
 
-// when file changes, stop listening
+// stop listening on file change
 emitter.removeAllListeners();
 
-// when shutting down
+// clean up on shutdown
 cleanup();
 ```
 
-## Parameters
+### Parameters
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `fileName` | `string` | Full path to the file being processed. Needed to resolve `node_modules`. |
-| `fileContents` | `string` | The file content (from IDE buffer, may be unsaved). |
+| `fileName` | `string` | Full path to the file. Needed to resolve `node_modules`. |
+| `fileContents` | `string` | File content (from editor buffer, may be unsaved). |
 | `language` | `Lang` | `Lang.JAVASCRIPT`, `Lang.TYPESCRIPT`, `Lang.VUE`, or `Lang.SVELTE` |
-| `config` | `ImportCostConfig` | Optional. `maxCallTime` (ms timeout), `concurrent` (boolean). |
+| `config` | `ImportCostConfig` | Optional. `maxCallTime` (ms), `concurrent` (boolean). |
 
-## PackageInfo
-
-Each calculated package contains:
+### PackageInfo
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -128,68 +122,50 @@ Each calculated package contains:
 | `size` | `number` | Minified size in bytes |
 | `gzip` | `number` | Gzipped size in bytes |
 | `brotli` | `number` | Brotli compressed size in bytes |
-| `sideEffects` | `boolean \| string[]` | From the package's `package.json` — `false` means tree-shakeable |
-| `line` | `number` | Line number in the source file |
+| `sideEffects` | `boolean \| string[]` | `false` = tree-shakeable |
+| `line` | `number` | Line number in source |
 | `version` | `string` | Resolved version (e.g. `lodash@4.17.21`) |
-| `error` | `Error` | Set if bundling failed |
+| `estimated` | `boolean` | `true` if bundling failed, showing entry file size instead |
+| `error` | `Error` | Set if calculation failed |
 
-## Events
+### Events
 
-| Event | Callback | Description |
-|-------|----------|-------------|
-| `start` | `(packages: PackageInfo[]) => void` | Parsing complete, sizes being calculated |
-| `calculated` | `(pkg: PackageInfo) => void` | Single package size ready |
-| `done` | `(packages: PackageInfo[]) => void` | All packages calculated |
-| `error` | `(e: Error) => void` | Fatal parse error |
-| `log` | `(message: string) => void` | Debug logging |
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `start` | `PackageInfo[]` | Parsing complete, sizes being calculated |
+| `calculated` | `PackageInfo` | Single package size ready |
+| `done` | `PackageInfo[]` | All packages calculated |
+| `error` | `Error` | Fatal parse error |
+| `log` | `string` | Debug logging |
 
-## Supported Patterns
+## Supported Import Patterns
 
 - `import x from 'pkg'`
 - `import * as x from 'pkg'`
 - `import { a, b } from 'pkg'`
 - `import { a as b } from 'pkg'`
 - `const x = require('pkg')`
-- `import('pkg')` (dynamic import)
+- `import('pkg')` (dynamic)
 - `import x = require('pkg')` (TypeScript)
 
-Supports **JavaScript**, **TypeScript**, **JSX**, **TSX**, **Vue**, and **Svelte** files.
+Supports **JavaScript**, **TypeScript**, **JSX**, **TSX**, **Vue**, and **Svelte**.
 
 ## Ignore List
 
-Create a `.importcostignore` file in your project root to skip specific packages:
+Create `.importcostignore` in your project root:
 
 ```
-# Heavy packages we accept
+# Skip heavy packages we accept
 @prisma/client
 firebase*
-
-# All Angular packages
 @angular/*
-
-# Development tools
-webpack
-typescript
 ```
 
-Patterns support exact names and glob wildcards (`*`, `**`). Lines starting with `#` are comments.
-
-The ignore file is automatically picked up by both the CLI and the VS Code extension.
-
-## Package Manager Support
-
-Works with **npm**, **pnpm**, **yarn**, **yarn PnP**, and **bun**. Uses `require.resolve` for package lookup which handles all symlink structures natively.
-
-## Performance
-
-- **esbuild** for bundling — 10-100x faster than webpack
-- **es-module-lexer** for parsing — purpose-built, <1ms per file
-- **Brotli** compression calculated at quality 4 for speed
-- Only 2 runtime dependencies
+Glob patterns (`*`, `**`) and `#` comments supported. Picked up by both CLI and editor extensions.
 
 ## Credits
 
-Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
+Forked from [wix/import-cost](https://github.com/wix/import-cost), rewritten in TypeScript with esbuild and es-module-lexer.
 
 ## License
 

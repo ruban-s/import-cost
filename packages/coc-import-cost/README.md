@@ -1,70 +1,61 @@
-# Import Cost Fast — coc.nvim Extension
+# Import Cost Fast — coc.nvim
 
-This extension will display inline in the editor the size of the imported package.
-The extension utilizes esbuild and SWC in order to detect the imported size.
-![Example Image](images/coc-import-cost.gif)
+> See the bundle size of every import in Vim/Neovim.
+
+Display import sizes as virtual text using [coc.nvim](https://github.com/neoclide/coc.nvim). Powered by [esbuild](https://esbuild.github.io/) and [es-module-lexer](https://github.com/nicolo-ribaudo/es-module-lexer).
+
+![Example](images/coc-import-cost.gif)
 
 ## Requirements
 
-This is an extension for [coc.nvim](https://github.com/neoclide/coc.nvim) and requires that it be installed first.
+- [coc.nvim](https://github.com/neoclide/coc.nvim) installed and configured
+- Code lens enabled in coc config
 
 ## Installation
 
-Once you have `coc.nvim` installed, open Vim/Neovim, and execute:
-
-```
-:CocInstall coc-import-cost
+```vim
+:CocInstall coc-import-cost-fast
 ```
 
-You'll also need to enable the code lens feature in coc (`:CocConfig`):
+Enable code lens (`:CocConfig`):
 
-```
-"codeLens.enable": true
+```json
+{
+  "codeLens.enable": true
+}
 ```
 
 ## Features
 
-Calculates the size of imports and requires.
-Currently supports:
-
-* Default importing: `import Func from 'utils';`
-* Entire content importing: `import * as Utils from 'utils';`
-* Selective importing: `import {Func} from 'utils';`
-* Selective importing with alias: `import {orig as alias} from 'utils';`
-* Submodule importing: `import Func from 'utils/Func';`
-* Require: `const Func = require('utils').Func;`
-* Supports both `Javascript` and `Typescript`
-
-## Why & How
-
-We detail the why and how in this blog post:
-[https://medium.com/@yairhaimo/keep-your-bundle-size-under-control-with-import-cost-vscode-extension-5d476b3c5a76]()
+- **Inline size display** — minified, gzipped, and brotli sizes shown as virtual text
+- **All import patterns** — `import`, `import *`, `import { }`, `require()`, dynamic `import()`
+- **Language support** — JavaScript, TypeScript, Vue, and Svelte
+- **Cached results** — sizes cached per package + version for instant display
+- **Tree-shake awareness** — reports if a package supports tree-shaking
+- **Brotli compression** — shows brotli alongside gzip
+- **Budget warnings** — `⚠ over budget!` when imports exceed configured `budgetKB`
+- **Lighter alternatives** — suggests smaller replacements (moment → dayjs, lodash → lodash-es)
+- **Estimated sizes** — `~` prefix when bundling falls back to entry file size
 
 ## Configuration
 
-The following properties are configurable:
-
-```javascript
-  // File extensions to be parsed by the Typescript parser
-  "importCost.typescriptExtensions": [
-    "\\.tsx?$"
-  ],
-
-  // File extensions to be parsed by the Javascript parser
-  "importCost.javascriptExtensions": [
-    "\\.jsx?$"
-  ],
-
-  // Which bundle size to display
+```json
+{
+  "importCost.typescriptExtensions": ["\\.tsx?$"],
+  "importCost.javascriptExtensions": ["\\.jsx?$"],
+  "importCost.vueExtensions": ["\\.vue$"],
+  "importCost.svelteExtensions": ["\\.svelte$"],
   "importCost.bundleSizeDecoration": "both",
-
-  // Display the 'calculating' decoration
   "importCost.showCalculatingDecoration": true,
-
-  // Print debug messages in output channel
+  "importCost.budgetKB": 0,
   "importCost.debug": false
+}
 ```
 
 ## Credits
 
-Forked from [wix/import-cost](https://github.com/wix/import-cost), thanks to the wix team!
+Forked from [wix/import-cost](https://github.com/wix/import-cost), rewritten in TypeScript with esbuild and es-module-lexer.
+
+## License
+
+MIT
