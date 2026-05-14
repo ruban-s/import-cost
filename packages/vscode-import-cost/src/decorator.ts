@@ -442,3 +442,11 @@ export function getDecorationsForFile(
 export function refreshDecorationsForFile(fileName: string): void {
   flushDecorationsDebounced(fileName);
 }
+
+export function getAllDecorations(): Map<string, Record<number, PackageInfo>> {
+  const map = new Map<string, Record<number, PackageInfo>>();
+  for (const [fileName, fileDecos] of Object.entries(decorations)) {
+    map.set(fileName, fileDecos);
+  }
+  return map;
+}

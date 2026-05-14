@@ -14,6 +14,7 @@ import {
   calculated,
   clearDecorations,
   clearDecorationsForFile,
+  getAllDecorations,
   getDecorationsForFile,
   hasDecorations,
   onDidChangeActiveEditor,
@@ -28,6 +29,7 @@ import {
   updateDuplicateDiagnostics,
 } from './duplicate-detector';
 import logger from './logger';
+import { showOptimizationReport } from './optimization-report';
 import {
   clearPackageJsonDecorations,
   hasPackageJsonDecorations,
@@ -165,6 +167,18 @@ export function activate(context: vscode.ExtensionContext) {
           }
         } else {
           deactivate();
+        }
+      }),
+      vscode.commands.registerCommand('importCost.optimizationReport', () => {
+        const idx = workspaceIndex;
+        if (idx) {
+          idx.ensureInitialized().then(() => {
+            showOptimizationReport(idx, getAllDecorations);
+          });
+        } else {
+          vscode.window.showInformationMessage(
+            'Import Cost: Enable workspaceAwareness to use the optimization report.',
+          );
         }
       }),
       vscode.commands.registerCommand('importCost.clearCache', async () => {
