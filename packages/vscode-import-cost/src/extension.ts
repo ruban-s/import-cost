@@ -22,6 +22,11 @@ import {
   setWorkspaceIndex as setDecoratorIndex,
 } from './decorator';
 import * as diagnostics from './diagnostics';
+import {
+  clearDuplicateDiagnostics,
+  disposeDuplicates,
+  updateDuplicateDiagnostics,
+} from './duplicate-detector';
 import logger from './logger';
 import {
   clearPackageJsonDecorations,
@@ -89,6 +94,9 @@ export function activate(context: vscode.ExtensionContext) {
             const pkgs = Object.values(decs).filter(p => (p.size || 0) > 0);
             statusbar.setFileCost(doc.fileName, pkgs);
           }
+        }
+        if (workspaceIndex?.isReady) {
+          updateDuplicateDiagnostics(workspaceIndex);
         }
       });
 
@@ -198,6 +206,8 @@ export function deactivate(): void {
   clearPackageJsonDecorations();
   diagnostics.clearDiagnostics();
   diagnostics.dispose();
+  clearDuplicateDiagnostics();
+  disposeDuplicates();
   statusbar.dispose();
   workspaceIndex?.dispose();
   workspaceIndex = null;

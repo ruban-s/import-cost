@@ -1,7 +1,7 @@
 import { getPackages, Lang } from 'import-cost-core';
 import * as vscode from 'vscode';
 
-interface ImportRecord {
+export interface ImportRecord {
   fileName: string;
   line: number;
   packageName: string;
@@ -206,6 +206,14 @@ export class WorkspaceImportIndex implements vscode.Disposable {
       }
     }
     return { uniquePackages, sharedPackages };
+  }
+
+  getAllPackageNames(): Set<string> {
+    return new Set(this.packageIndex.keys());
+  }
+
+  getPackageFiles(packageName: string): Map<string, ImportRecord[]> {
+    return this.packageIndex.get(packageName) ?? new Map();
   }
 
   get isReady(): boolean {
