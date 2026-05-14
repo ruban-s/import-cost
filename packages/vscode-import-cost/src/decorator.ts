@@ -86,10 +86,9 @@ function getDecorationMessage(packageInfo: PackageInfo | undefined) {
   if (!packageInfo) {
     return text('Calculating...');
   }
-  const estimated = (packageInfo as any).estimated;
-  const prefix = estimated ? '~' : '';
-  const size = prefix + fileSize(packageInfo.size!, { standard: 'jedec' });
-  const gzip = prefix + fileSize(packageInfo.gzip!, { standard: 'jedec' });
+  const prefix = packageInfo.estimated ? '~' : '';
+  const size = prefix + fileSize(packageInfo.size ?? 0, { standard: 'jedec' });
+  const gzip = prefix + fileSize(packageInfo.gzip ?? 0, { standard: 'jedec' });
   const brotli = packageInfo.brotli
     ? prefix + fileSize(packageInfo.brotli, { standard: 'jedec' })
     : null;
@@ -177,7 +176,7 @@ function getDecorationColor(packageInfo: PackageInfo | undefined) {
     light: { after: { color: light } },
   });
 
-  if ((packageInfo as any)?.estimated) {
+  if (packageInfo?.estimated) {
     return color('#888888', '#999999');
   }
 
@@ -238,11 +237,12 @@ function getImportSpecifierCount(importString: string): number | null {
 }
 
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
-  const estimated = (pkg as any).estimated;
-  const size = fileSize(pkg.size!, { standard: 'jedec' });
-  const gzip = fileSize(pkg.gzip!, { standard: 'jedec' });
-  const gzipRatio = ((pkg.gzip! / pkg.size!) * 100).toFixed(0);
-  const sizeKB = pkg.size! / 1024;
+  const pkgSize = pkg.size ?? 0;
+  const pkgGzip = pkg.gzip ?? 0;
+  const size = fileSize(pkgSize, { standard: 'jedec' });
+  const gzip = fileSize(pkgGzip, { standard: 'jedec' });
+  const gzipRatio = pkgSize > 0 ? ((pkgGzip / pkgSize) * 100).toFixed(0) : '0';
+  const sizeKB = pkgSize / 1024;
 
   const md = new vscode.MarkdownString();
   md.supportHtml = true;
@@ -251,7 +251,7 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     `**${pkg.name}**${pkg.version ? ` \`${pkg.version.split('@').pop()}\`` : ''}\n\n`,
   );
 
-  if (estimated) {
+  if (pkg.estimated) {
     md.appendMarkdown(
       `*⚠ Estimated size — bundling failed, showing entry file size.*\n\n`,
     );
@@ -262,7 +262,8 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   md.appendMarkdown(`| Gzipped | ${gzip} (${gzipRatio}% of minified) |\n`);
   if (pkg.brotli) {
     const brotli = fileSize(pkg.brotli, { standard: 'jedec' });
-    const brotliRatio = ((pkg.brotli / pkg.size!) * 100).toFixed(0);
+    const brotliRatio =
+      pkgSize > 0 ? ((pkg.brotli / pkgSize) * 100).toFixed(0) : '0';
     md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
   }
 
@@ -292,7 +293,7 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
       .get<number>('budgetKB', 0);
     md.appendMarkdown(`\n---\n`);
     md.appendMarkdown(
-      `$(warning) **Over budget!** This import is ${fileSize(pkg.size!, { standard: 'jedec' })} — budget is ${budget} KB.\n`,
+      `$(warning) **Over budget!** This import is ${size} — budget is ${budget} KB.\n`,
     );
   } else if (sizeKB > 100) {
     md.appendMarkdown(`\n---\n`);
