@@ -1,5 +1,9 @@
 # Changes
 
+## 3.7.0
+
+- Version bump to align with core 5.8.0
+
 ## 3.6.0
 
 - Version bump to align with core 5.7.0 (workspace intelligence feature in VS Code extension)
