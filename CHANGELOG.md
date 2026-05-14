@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [5.7.0] - 2026-05-14
+
+### Added
+
+- **Workspace-aware import sharing** — decorations show `· shared N files` for packages imported across multiple files
+- **Marginal cost in hover** — hover card lists other files using the same package and notes the marginal bundle cost is ~0 KB
+- **Unique cost in status bar** — shows `Σ 340 KB (45 KB unique)` when shared imports exist
+- New settings: `importCost.workspaceAwareness`, `importCost.showWorkspaceSharing`
+
 ## [5.5.1] - 2026-05-14
 
 ### Fixed
