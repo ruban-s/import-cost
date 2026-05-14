@@ -20,7 +20,7 @@ npx @biomejs/biome check packages/
 
 ```sh
 # Bump all packages to new version (replace X.Y.Z)
-VERSION=5.6.0
+VERSION=5.7.0
 
 # Core library
 npm version $VERSION -w import-cost-core --no-git-tag-version
@@ -29,7 +29,7 @@ npm version $VERSION -w import-cost-core --no-git-tag-version
 npm version $VERSION -w fast-import-cost --no-git-tag-version
 
 # coc.nvim (follows its own versioning)
-# npm version 3.5.0 -w coc-import-cost-fast --no-git-tag-version
+# npm version 3.6.0 -w coc-import-cost-fast --no-git-tag-version
 
 # Commit version bump
 git add packages/*/package.json

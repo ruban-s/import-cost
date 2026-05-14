@@ -1,5 +1,12 @@
 # Changes
 
+## 5.7.0
+
+- Add **workspace-aware import sharing** — decorations show `· shared N files` for packages imported across multiple files
+- Add **marginal cost in hover** — lists other files using the same package, notes marginal bundle cost is ~0 KB
+- Add **unique cost in status bar** — `Σ 340 KB (45 KB unique)` when shared imports exist
+- New settings: `importCost.workspaceAwareness`, `importCost.showWorkspaceSharing`
+
 ## 5.6.0
 
 - Fix **memory leak** — clean up emitters, timers, and decorations when files are closed
