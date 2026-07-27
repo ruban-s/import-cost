@@ -14,7 +14,7 @@ npm run lint:fix           # Auto-fix lint issues
 # import-cost core tests
 npm test -w import-cost
 # Single test by grep pattern
-cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.js 'test/**/*.spec.js' --grep "pattern"
+cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.mts 'test/*.spec.mts' --grep "pattern"
 
 # VSCode extension type check (no emit — it uses esbuild for building)
 cd packages/vscode-import-cost && npm run typecheck
@@ -22,7 +22,7 @@ cd packages/vscode-import-cost && npm run typecheck
 # Build VSCode extension + package VSIX
 cd packages/vscode-import-cost && npm run build
 # Build extension JS only (no VSIX)
-cd packages/vscode-import-cost && node build.mjs
+cd packages/vscode-import-cost && node build.mts
 ```
 
 ## Architecture
@@ -49,7 +49,7 @@ Pipeline: **parse** -> **resolve versions** -> **bundle & measure**
 - `decorator.ts`: Inline text decorations showing sizes, color coding (small/medium/large), budget warnings, treeshake hints
 - `diagnostics.ts`: VS Code diagnostics for over-budget imports
 - `package-json-cost.ts`: Shows sizes for dependencies listed in package.json
-- `build.mjs`: Custom esbuild build script that bundles the extension and copies platform-specific esbuild binaries into `dist/node_modules/`
+- `build.mts`: Custom esbuild build script that bundles the extension and copies platform-specific esbuild binaries into `dist/node_modules/`
 
 ### `packages/coc-import-cost` — coc.nvim extension
 
@@ -58,7 +58,8 @@ Vim/Neovim adapter using virtual text via coc.nvim. Consumes `import-cost` core 
 ## Key Details
 
 - **Linting**: Biome (not ESLint). Single quotes, 2-space indent, trailing commas. Pre-commit hook runs `lint-staged` -> Biome.
-- **TypeScript**: Target ES2022, CommonJS output. The vscode-import-cost package uses `noEmit` (esbuild handles its build via `build.mjs`), while import-cost uses `tsc` directly.
+- **TypeScript**: 7.x, `module: node20`, target ES2022, CommonJS output. `@types/*` are no longer auto-discovered in TS 6+, so every tsconfig lists what it needs in `types`. The vscode-import-cost package uses `noEmit` for src (esbuild handles its build via `build.mts`) but compiles `test/` with `tsc` into `out/test/`, since VS Code's extension host loads the test runners directly and cannot strip types. `import-cost` uses `tsc` directly; its `test/*.mts` files run under Node's native type stripping and are typechecked by `test/tsconfig.json`.
+- **Test fixtures** in `packages/import-cost/test/fixtures/` stay `.js`/`.jsx` — they are parser *input*, not source.
 - **Workspace linking**: `vscode-import-cost` depends on `import-cost` via workspace symlink. Changes to core are immediately available without rebuilding the extension.
 - **Tests**: Mocha + Chai in `packages/import-cost/test/`. Tests require `npm install` in the test fixtures directory structure. The `pretest` script runs `tsc` first.
 

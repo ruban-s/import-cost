@@ -3,7 +3,8 @@
 .vscode-test-web/**
 test/**
 src/**
+out/**
 node_modules/**
-build.mjs
+*.mts
 tsconfig.json
 .gitignore

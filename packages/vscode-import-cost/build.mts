@@ -13,7 +13,7 @@ import { dirname, extname, join } from 'path';
 
 const require = createRequire(import.meta.url);
 
-const PLATFORM_MAP = {
+const PLATFORM_MAP: Record<string, string> = {
   'darwin-arm64': '@esbuild/darwin-arm64',
   'darwin-x64': '@esbuild/darwin-x64',
   'linux-x64': '@esbuild/linux-x64',
@@ -41,7 +41,7 @@ await esbuild.build({
   plugins: [
     {
       name: 'stub-unused-deps',
-      setup(build) {
+      setup(build: esbuild.PluginBuild) {
         const stubs = [
           'worker-farm',
           'webpack',
@@ -69,7 +69,7 @@ if (existsSync(distModules)) {
   rmSync(distModules, { recursive: true });
 }
 
-function copyModuleEssentials(name, { skipBin = false } = {}) {
+function copyModuleEssentials(name: string, { skipBin = false } = {}): void {
   const modPath = dirname(require.resolve(`${name}/package.json`));
   const dest = join(distModules, name);
   mkdirSync(dest, { recursive: true });
@@ -98,7 +98,7 @@ function copyModuleEssentials(name, { skipBin = false } = {}) {
     ...(skipBin ? ['bin'] : []),
   ]);
 
-  function copyDir(src, dst) {
+  function copyDir(src: string, dst: string): void {
     const entries = readdirSync(src, { withFileTypes: true });
     for (const entry of entries) {
       if (skipFiles.has(entry.name)) continue;
@@ -117,7 +117,7 @@ function copyModuleEssentials(name, { skipBin = false } = {}) {
   copyDir(modPath, dest);
 }
 
-function copyNativeBinaryOnly(name) {
+function copyNativeBinaryOnly(name: string): void {
   const modPath = dirname(require.resolve(`${name}/package.json`));
   const dest = join(distModules, name);
   mkdirSync(dest, { recursive: true });

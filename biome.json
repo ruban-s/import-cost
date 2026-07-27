@@ -39,7 +39,9 @@
     "includes": [
       "packages/import-cost/src/**",
       "packages/vscode-import-cost/src/**",
-      "packages/vscode-import-cost/build.mjs",
+      "packages/vscode-import-cost/*.mts",
+      "packages/vscode-import-cost/test/**/*.ts",
+      "packages/import-cost/test/*.mts",
       "packages/coc-import-cost/src/**"
     ]
   }

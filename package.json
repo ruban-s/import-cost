@@ -16,13 +16,13 @@
   "workspaces": [
     "packages/*"
   ],
-  "lint-staged": {
-    "*.{js,ts,mjs}": "npx @biomejs/biome check --write"
-  },
   "overrides": {
     "mocha": {
       "serialize-javascript": "^7.0.5",
       "diff": "^8.0.3"
     }
+  },
+  "lint-staged": {
+    "*.{js,ts,mts,cts,mjs}": "npx @biomejs/biome check --write"
   }
 }

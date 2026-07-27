@@ -207,10 +207,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "pretest": "node build.mjs",
-    "build": "node build.mjs && npx @vscode/vsce package --no-dependencies",
-    "build:platform": "node build-platforms.mjs",
-    "test": "node ./test/index.js"
+    "pretest": "node build.mts && tsc -p test",
+    "build": "node build.mts && npx @vscode/vsce package --no-dependencies",
+    "build:platform": "node build-platforms.mts",
+    "test": "node ./out/test/index.js"
   },
   "dependencies": {
     "esbuild": "^0.27.4"
@@ -220,6 +220,7 @@
     "@types/node": "^22.x",
     "@types/vscode": "^1.75.0",
     "@vscode/test-electron": "^2.5.2",
+    "@vscode/test-web": "^0.0.81",
     "@vscode/vsce": "^3.7.1",
     "chai": "^4.5.0",
     "filesize": "^10.1.6",

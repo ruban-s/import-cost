@@ -24,22 +24,18 @@ if (targets.length === 0) {
 for (const { target, vsceTarget } of targets) {
   console.log(`\nBuilding for ${target}...`);
   try {
-    execFileSync('node', ['build.mjs', `--target=${target}`], {
+    execFileSync('node', ['build.mts', `--target=${target}`], {
       stdio: 'inherit',
     });
     execFileSync(
       'npx',
-      [
-        '@vscode/vsce',
-        'package',
-        '--no-dependencies',
-        '--target',
-        vsceTarget,
-      ],
+      ['@vscode/vsce', 'package', '--no-dependencies', '--target', vsceTarget],
       { stdio: 'inherit' },
     );
     console.log(`Done: ${target}`);
   } catch (e) {
-    console.error(`Failed: ${target} — ${e.message}`);
+    console.error(
+      `Failed: ${target} — ${e instanceof Error ? e.message : String(e)}`,
+    );
   }
 }

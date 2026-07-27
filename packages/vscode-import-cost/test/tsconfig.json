@@ -1,0 +1,10 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "../out/test",
+    "rootDir": ".",
+    "declaration": false,
+    "types": ["node", "mocha", "chai"]
+  },
+  "include": ["**/*.ts"]
+}
