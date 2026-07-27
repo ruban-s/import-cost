@@ -58,18 +58,19 @@
   },
   "author": "ruban-s",
   "devDependencies": {
-    "@types/chai": "^4.3.20",
-    "@types/chai-as-promised": "^7.1.8",
+    "@biomejs/biome": "^2.5.5",
+    "@types/chai": "^5.2.3",
+    "@types/chai-as-promised": "^8.0.2",
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.0.0",
-    "chai": "^4.5.0",
-    "chai-as-promised": "^7.1.2",
-    "mocha": "^11.3.0",
+    "@types/node": "^22.20.1",
+    "chai": "^5.3.3",
+    "chai-as-promised": "^8.0.2",
+    "mocha": "^11.7.6",
     "typescript": "7.0.2"
   },
   "dependencies": {
-    "es-module-lexer": "^2.0.0",
-    "esbuild": "^0.27.4",
-    "filesize": "^10.1.6"
+    "es-module-lexer": "^2.3.1",
+    "esbuild": "^0.28.1",
+    "filesize": "^11.0.22"
   }
 }

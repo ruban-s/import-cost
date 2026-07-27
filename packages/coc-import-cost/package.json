@@ -92,14 +92,14 @@
     "compile": "tsc -watch -p ./"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.1",
     "typescript": "7.0.2"
   },
   "dependencies": {
     "coc.nvim": "^0.0.82",
-    "filesize": "^10.1.6",
+    "filesize": "^11.0.22",
     "import-cost-core": "file:../import-cost",
-    "vscode-languageserver-protocol": "^3.17.5"
+    "vscode-languageserver-protocol": "^3.18.2"
   },
   "icon": "images/import-cost-logo.png",
   "galleryBanner": {
