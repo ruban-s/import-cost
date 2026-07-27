@@ -1,14 +1,24 @@
 name: build
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: true
+
 jobs:
-  test:
-    env:
-      CI: true
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -17,7 +27,59 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run lint
-      - run: xvfb-run -a npm run test
-        if: matrix.os == 'ubuntu-latest'
-      - run: npm run test
-        if: matrix.os != 'ubuntu-latest'
+
+  test:
+    needs: lint
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm test -w import-cost-core
+      - run: npm run typecheck -w fast-import-cost
+      - run: npm run build -w coc-import-cost-fast
+
+  extension:
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w import-cost-core
+      - uses: actions/cache@v6
+        with:
+          path: packages/vscode-import-cost/.vscode-test
+          key: vscode-test-${{ runner.os }}-${{ hashFiles('packages/vscode-import-cost/package.json') }}
+          restore-keys: vscode-test-${{ runner.os }}-
+      - run: xvfb-run -a npm test -w fast-import-cost
+
+  package:
+    needs: [test, extension]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: vsix
+          path: packages/vscode-import-cost/*.vsix
+          if-no-files-found: error
