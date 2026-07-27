@@ -93,7 +93,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "typescript": "6.0.3"
+    "typescript": "7.0.2"
   },
   "dependencies": {
     "coc.nvim": "^0.0.82",
