@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core)
 [![npm downloads](https://img.shields.io/npm/dm/import-cost-core.svg)](https://www.npmjs.com/package/import-cost-core)
-[![license](https://img.shields.io/npm/l/import-cost-core.svg)](https://github.com/ruban-s/import-cost/blob/master/LICENSE)
+[![license](https://img.shields.io/npm/l/import-cost-core.svg)](https://github.com/ruban-s/import-cost/blob/main/LICENSE)
 
 > Calculate the bundle size of imported packages — powered by esbuild and es-module-lexer.
 
