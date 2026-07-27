@@ -62,7 +62,7 @@
     "chai": "^4.5.0",
     "chai-as-promised": "^7.1.2",
     "mocha": "^11.3.0",
-    "typescript": "^5.9.3"
+    "typescript": "6.0.3"
   },
   "dependencies": {
     "es-module-lexer": "^2.0.0",

@@ -226,7 +226,7 @@
     "glob": "^7.2.0",
     "import-cost-core": "*",
     "mocha": "^11.3.0",
-    "typescript": "5.9.3"
+    "typescript": "6.0.3"
   },
   "icon": "images/import-cost-logo.png",
   "galleryBanner": {
