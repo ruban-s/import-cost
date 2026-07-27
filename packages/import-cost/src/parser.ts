@@ -1,4 +1,4 @@
-import { getPackages as getPackagesFromJS } from './swc-parser';
+import { getPackages as getPackagesFromJS } from './js-parser';
 import type { PackageInfo } from './types';
 import { Lang } from './types';
 

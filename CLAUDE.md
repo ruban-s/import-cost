@@ -35,7 +35,7 @@ The public API is `importCost(fileName, text, language, config)` which returns a
 
 Pipeline: **parse** -> **resolve versions** -> **bundle & measure**
 
-1. **Parser** (`parser.ts` -> `swc-parser.ts`): Extracts import/require statements from source code. Uses `es-module-lexer` for ESM imports, regex for CJS `require()` and TS `import = require()`. Has a regex fallback for JSX files that es-module-lexer can't parse. Vue/Svelte files get their `<script>` block extracted first.
+1. **Parser** (`parser.ts` -> `js-parser.ts`): Extracts import/require statements from source code. Uses `es-module-lexer` for ESM imports, regex for CJS `require()` and TS `import = require()`. Has a regex fallback for JSX files that es-module-lexer can't parse. Vue/Svelte files get their `<script>` block extracted first.
 
 2. **Version resolution** (`utils.ts`): Finds package version and `sideEffects` field by walking up to find `node_modules`. Uses `require.resolve` first (handles pnpm/yarn PnP), falls back to manual directory traversal. Also resolves monorepo root for `nodePaths`.
 
