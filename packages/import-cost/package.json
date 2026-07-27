@@ -45,8 +45,8 @@
   ],
   "scripts": {
     "build": "tsc",
-    "pretest": "tsc",
-    "test": "mocha -t 10000 test/mocha-setup.js test/**/*.spec.js"
+    "pretest": "tsc && tsc -p test",
+    "test": "mocha -t 10000 test/mocha-setup.mts test/*.spec.mts"
   },
   "repository": {
     "type": "git",
@@ -58,6 +58,9 @@
   },
   "author": "ruban-s",
   "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/chai-as-promised": "^7.1.8",
+    "@types/mocha": "^10.0.10",
     "@types/node": "^22.0.0",
     "chai": "^4.5.0",
     "chai-as-promised": "^7.1.2",

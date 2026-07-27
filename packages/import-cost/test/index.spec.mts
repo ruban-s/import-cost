@@ -1,24 +1,38 @@
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const { expect } = require('chai');
-const { importCost: runner, cleanup, Lang, clearSizeCache, cacheFileName, DebounceError, getPackages, setCacheDir, importCostAsync } = require('../dist/index.js');
+import { expect } from 'chai';
+import type { EventEmitter } from 'events';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import type { ImportCostConfig, PackageInfo } from '../dist/index.js';
+import {
+  cacheFileName,
+  cleanup,
+  clearSizeCache,
+  DebounceError,
+  getPackages,
+  importCostAsync,
+  Lang,
+  importCost as runner,
+  setCacheDir,
+} from '../dist/index.js';
 
-function fixture(fileName) {
-  return path.join(__dirname, 'fixtures', fileName);
+function fixture(fileName: string): string {
+  return path.join(import.meta.dirname, 'fixtures', fileName);
 }
 
-function whenDone(emitter) {
+function whenDone(emitter: EventEmitter): Promise<PackageInfo[]> {
   return new Promise((resolve, reject) => {
-    let start;
-    const calculated = [];
-    emitter.on('start', packages => {
+    let start: PackageInfo[] | undefined;
+    const calculated: PackageInfo[] = [];
+    emitter.on('start', (packages: PackageInfo[]) => {
       expect(start).to.equal(undefined);
       start = packages;
     });
-    emitter.on('calculated', packages => calculated.push(packages));
-    emitter.on('done', packages => {
-      expect(start.length).to.equal(packages.length);
+    emitter.on('calculated', (packages: PackageInfo) =>
+      calculated.push(packages),
+    );
+    emitter.on('done', (packages: PackageInfo[]) => {
+      expect(start!.length).to.equal(packages.length);
       expect(calculated.length).to.equal(packages.length);
       resolve(packages);
     });
@@ -26,7 +40,7 @@ function whenDone(emitter) {
   });
 }
 
-const LANGUAGES = {
+const LANGUAGES: Record<string, Lang> = {
   ts: Lang.TYPESCRIPT,
   js: Lang.JAVASCRIPT,
   jsx: Lang.JAVASCRIPT,
@@ -34,27 +48,36 @@ const LANGUAGES = {
   svelte: Lang.SVELTE,
 };
 
-async function check(fileName, pkg, config = { concurrent: false }) {
-  const language = LANGUAGES[fileName.split('.').pop()];
+async function check(
+  fileName: string,
+  pkg?: string,
+  config: Partial<ImportCostConfig> = { concurrent: false },
+): Promise<PackageInfo | undefined> {
+  const language = LANGUAGES[fileName.split('.').pop()!];
   const content = fs.readFileSync(fixture(fileName), 'utf-8');
-  const emitter = runner(fixture(fileName), content, language, config);
+  const emitter = runner(
+    fixture(fileName),
+    content,
+    language,
+    config as ImportCostConfig,
+  );
   return (await whenDone(emitter)).find(x => x.name === pkg);
 }
 
 async function verify(
-  fileName,
+  fileName: string,
   pkg = 'chai',
   minSize = 10000,
   maxSize = 15000,
   gzipLowBound = 0.01,
   gzipHighBound = 0.8,
-) {
-  const { size, gzip } = await check(fileName, pkg);
+): Promise<void> {
+  const { size, gzip } = (await check(fileName, pkg))!;
   expect(size).to.be.within(minSize, maxSize);
-  expect(gzip).to.be.within(size * gzipLowBound, size * gzipHighBound);
+  expect(gzip).to.be.within(size! * gzipLowBound, size! * gzipHighBound);
 }
 
-async function timed(fileName) {
+async function timed(fileName: string): Promise<number> {
   const time = process.hrtime.bigint();
   await verify(fileName);
   return Math.round(Number(process.hrtime.bigint() - time) / 1e6);
@@ -197,8 +220,10 @@ describe('importCost', () => {
   });
 
   describe('caching', () => {
-    const slow = async x => expect(await timed(x)).to.be.within(500, 2500);
-    const fast = async x => expect(await timed(x)).to.be.within(0, 100);
+    const slow = async (x: string) =>
+      expect(await timed(x)).to.be.within(500, 2500);
+    const fast = async (x: string) =>
+      expect(await timed(x)).to.be.within(0, 100);
 
     it('caches the results import string & version', async () => {
       await slow('import.js');
@@ -218,7 +243,8 @@ describe('importCost', () => {
       await fast('import-mixed-reversed.ts');
     });
     it('debounce any consecutive calculations of same import line', () => {
-      const line = x => whenDone(runner(fixture('import.js'), x, LANGUAGES.js));
+      const line = (x: string) =>
+        whenDone(runner(fixture('import.js'), x, LANGUAGES.js));
       return Promise.all([
         expect(line('import "chai";')).to.be.rejectedWith(DebounceError),
         expect(line('import "chai/index";')).to.be.fulfilled,
@@ -241,11 +267,11 @@ describe('importCost', () => {
     });
     it('returns fallback size if bundle fails', async () => {
       const pkg = await check('failed-bundle.js', 'jest');
-      expect(pkg.size).to.be.above(0);
+      expect(pkg!.size).to.be.above(0);
     });
     it('marks fallback sizes as estimated', async () => {
       const pkg = await check('failed-bundle.js', 'jest');
-      expect(pkg.estimated).to.equal(true);
+      expect(pkg!.estimated).to.equal(true);
     });
     it('errors on broken javascript', () => {
       return expect(check('incomplete.bad.js')).to.be.rejected;
@@ -261,31 +287,43 @@ describe('importCost', () => {
     });
     it('should handle timeouts gracefully', async () => {
       const pkg = await check('require.js', 'chai', { maxCallTime: 1 });
-      expect(pkg.size).to.be.above(0);
+      expect(pkg!.size).to.be.above(0);
     });
   });
 
   describe('multi-line imports', () => {
     it('detects line number using offset for static imports', () => {
       const source = `import {\n  expect\n} from 'chai';\n`;
-      const packages = getPackages(fixture('import.js'), source, Lang.JAVASCRIPT);
+      const packages = getPackages(
+        fixture('import.js'),
+        source,
+        Lang.JAVASCRIPT,
+      );
       expect(packages).to.have.length(1);
       expect(packages[0].name).to.equal('chai');
       expect(packages[0].line).to.equal(1);
     });
     it('detects line number for imports not on first line', () => {
       const source = `const x = 1;\nconst y = 2;\nimport chai from 'chai';\n`;
-      const packages = getPackages(fixture('import.js'), source, Lang.JAVASCRIPT);
+      const packages = getPackages(
+        fixture('import.js'),
+        source,
+        Lang.JAVASCRIPT,
+      );
       const pkg = packages.find(p => p.name === 'chai');
       expect(pkg).to.not.be.undefined;
-      expect(pkg.line).to.equal(3);
+      expect(pkg!.line).to.equal(3);
     });
     it('handles require on correct line', () => {
       const source = `// comment\n// another\nconst x = require('chai');\n`;
-      const packages = getPackages(fixture('require.js'), source, Lang.JAVASCRIPT);
+      const packages = getPackages(
+        fixture('require.js'),
+        source,
+        Lang.JAVASCRIPT,
+      );
       const pkg = packages.find(p => p.name === 'chai');
       expect(pkg).to.not.be.undefined;
-      expect(pkg.line).to.equal(3);
+      expect(pkg!.line).to.equal(3);
     });
   });
 
@@ -315,8 +353,8 @@ describe('importCost', () => {
       );
       const pkg = results.find(r => r.name === 'chai');
       expect(pkg).to.not.be.undefined;
-      expect(pkg.size).to.be.above(0);
-      expect(pkg.gzip).to.be.above(0);
+      expect(pkg!.size).to.be.above(0);
+      expect(pkg!.gzip).to.be.above(0);
     });
   });
 });
