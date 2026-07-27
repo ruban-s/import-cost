@@ -5,8 +5,8 @@
     "prepare": "husky",
     "lint": "npx @biomejs/biome check .",
     "lint:fix": "npx @biomejs/biome check --write .",
-    "test": "npm run test --workspaces --if-present",
-    "build": "npm run build --workspaces --if-present"
+    "test": "npm run build -w import-cost-core && npm run test --workspaces --if-present",
+    "build": "npm run build -w import-cost-core && npm run build -w coc-import-cost-fast -w fast-import-cost"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.5",
