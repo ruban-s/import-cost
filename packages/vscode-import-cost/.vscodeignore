@@ -1,6 +1,5 @@
 .vscode/**
 .vscode-test/**
-.vscode-test-web/**
 test/**
 src/**
 out/**

@@ -4,7 +4,12 @@
     "outDir": "../out/test",
     "rootDir": ".",
     "declaration": false,
-    "types": ["node", "mocha", "chai"]
+    "types": [
+      "node",
+      "mocha"
+    ]
   },
-  "include": ["**/*.ts"]
+  "include": [
+    "**/*.ts"
+  ]
 }
