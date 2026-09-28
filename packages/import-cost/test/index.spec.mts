@@ -563,6 +563,47 @@ describe('importCost', () => {
       );
       expect(results.map(p => p.name)).to.eql(['react']);
     });
+    it('gives batched imports the same sizes as imports built alone', async () => {
+      const sources = [
+        `import chai from 'chai';`,
+        `import { func1 } from 'chai';`,
+        `import React from 'react';`,
+        `import { createRoot } from 'react-dom/client';`,
+        `import hasPeer from 'haspeerdeps';`,
+      ];
+      const alone: number[] = [];
+      for (const source of sources) {
+        await clearSizeCache();
+        const [pkg] = await importCostAsync(
+          fixture('import.js'),
+          source,
+          Lang.JAVASCRIPT,
+          FAST,
+        );
+        alone.push(pkg.size ?? 0);
+      }
+      await clearSizeCache();
+      const batched = await importCostAsync(
+        fixture('import.js'),
+        sources.join('\n'),
+        Lang.JAVASCRIPT,
+        FAST,
+      );
+      expect(batched.map(p => p.size)).to.eql(alone);
+      expect(batched.every(p => !p.estimated && !p.error)).to.equal(true);
+    });
+    it('keeps exact sizes when another import in the batch cannot bundle', async () => {
+      const results = await importCostAsync(
+        fixture('import.js'),
+        `import chai from 'chai';\nimport missing from 'chai/does-not-exist';\n`,
+        Lang.JAVASCRIPT,
+        FAST,
+      );
+      const byName = Object.fromEntries(results.map(p => [p.name, p]));
+      expect(byName.chai.estimated).to.not.equal(true);
+      expect(byName.chai.size).to.be.within(10000, 15000);
+      expect(byName['chai/does-not-exist'].estimated).to.equal(true);
+    });
   });
 
   describe('cache directory', () => {

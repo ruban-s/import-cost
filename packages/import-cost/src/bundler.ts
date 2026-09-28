@@ -102,6 +102,90 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
 }
 
+interface BundleJob {
+  contents: string;
+  resolve: (output: Uint8Array) => void;
+  reject: (reason: unknown) => void;
+}
+
+interface Batch {
+  resolveDir: string | undefined;
+  external: string[];
+  maxCallTime: number;
+  jobs: BundleJob[];
+}
+
+const BATCH_WINDOW_MS = 5;
+const pendingBatches = new Map<string, Batch>();
+let batchTimer: ReturnType<typeof setTimeout> | undefined;
+
+function flushBatches(): void {
+  batchTimer = undefined;
+  const batches = [...pendingBatches.values()];
+  pendingBatches.clear();
+  for (const batch of batches) void withBuildSlot(() => runBatch(batch));
+}
+
+async function runBatch(batch: Batch): Promise<void> {
+  let outputs: Uint8Array[];
+  try {
+    outputs = await buildEntries(batch);
+  } catch (e) {
+    if (batch.jobs.length === 1) return batch.jobs[0].reject(e);
+    // one unbundleable entry fails the whole build, so measure each alone
+    for (const job of batch.jobs) {
+      void withBuildSlot(() => runBatch({ ...batch, jobs: [job] }));
+    }
+    return;
+  }
+  batch.jobs.forEach((job, i) => job.resolve(outputs[i]));
+}
+
+async function buildEntries(batch: Batch): Promise<Uint8Array[]> {
+  const entries: esbuild.Plugin = {
+    name: 'import-cost-entries',
+    setup(build) {
+      build.onResolve({ filter: /^import-cost-entry:\d+$/ }, args => ({
+        path: args.path,
+        namespace: 'import-cost-entry',
+      }));
+      build.onLoad({ filter: /.*/, namespace: 'import-cost-entry' }, args => ({
+        contents: batch.jobs[Number(args.path.split(':')[1])].contents,
+        resolveDir: batch.resolveDir ?? process.cwd(),
+        loader: 'js',
+      }));
+    },
+  };
+  const build = esbuild.build({
+    entryPoints: batch.jobs.map((_, i) => ({
+      in: `import-cost-entry:${i}`,
+      out: String(i),
+    })),
+    outdir: 'import-cost-out',
+    bundle: true,
+    minify: true,
+    write: false,
+    platform: 'browser',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    external: batch.external,
+    mainFields: ['browser', 'module', 'main'],
+    loader: loaders,
+    logLevel: 'silent',
+    plugins: [entries, ignoreUnresolvedPlugin],
+  });
+  const result = await withTimeout(build, batch.maxCallTime);
+  const outputs: Uint8Array[] = [];
+  for (const file of result.outputFiles ?? []) {
+    if (file.path.endsWith('.js')) {
+      outputs[Number(path.basename(file.path, '.js'))] = file.contents;
+    }
+  }
+  for (let i = 0; i < batch.jobs.length; i++) {
+    if (!outputs[i]) throw new Error('esbuild produced no output');
+  }
+  return outputs;
+}
+
 async function bundle(
   packageInfo: PackageInfo,
   config: ImportCostConfig,
@@ -115,27 +199,26 @@ async function bundle(
   } catch {
     // unreadable package.json: measure without its peers
   }
-  const build = esbuild.build({
-    stdin: {
-      contents: packageInfo.string,
-      resolveDir: await getProjectDir(packageInfo.fileName),
-      loader: 'js',
-    },
-    bundle: true,
-    minify: true,
-    write: false,
-    platform: 'browser',
-    define: { 'process.env.NODE_ENV': '"production"' },
-    external: [...peers, 'react', 'react-dom'].filter(p => p !== pkg),
-    mainFields: ['browser', 'module', 'main'],
-    loader: loaders,
-    logLevel: 'silent',
-    plugins: [ignoreUnresolvedPlugin],
+  const resolveDir = await getProjectDir(packageInfo.fileName);
+  const external = [...new Set([...peers, 'react', 'react-dom'])]
+    .filter(p => p !== pkg)
+    .sort();
+  // only same-package imports share parsed files; unrelated packages build faster in parallel
+  const key = JSON.stringify([pkg, resolveDir, external, config.maxCallTime]);
+  return new Promise((resolve, reject) => {
+    let batch = pendingBatches.get(key);
+    if (!batch) {
+      batch = {
+        resolveDir,
+        external,
+        maxCallTime: config.maxCallTime,
+        jobs: [],
+      };
+      pendingBatches.set(key, batch);
+    }
+    batch.jobs.push({ contents: packageInfo.string, resolve, reject });
+    if (!batchTimer) batchTimer = setTimeout(flushBatches, BATCH_WINDOW_MS);
   });
-  const result = await withTimeout(build, config.maxCallTime);
-  const output = result.outputFiles?.[0];
-  if (!output) throw new Error('esbuild produced no output');
-  return output.contents;
 }
 
 async function measure(output: Uint8Array): Promise<SizeResult> {
@@ -168,7 +251,7 @@ export async function calcSize(
 ): Promise<SizeResult> {
   let output: Uint8Array;
   try {
-    output = await withBuildSlot(() => bundle(packageInfo, config));
+    output = await bundle(packageInfo, config);
   } catch (e) {
     if (e instanceof TimeoutError) throw e;
     const estimate = await estimatePackageSize(packageInfo);
