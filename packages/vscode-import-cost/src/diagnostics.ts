@@ -5,13 +5,13 @@ import * as vscode from 'vscode';
 const collection = vscode.languages.createDiagnosticCollection('importCost');
 
 export function updateDiagnostics(
-  fileName: string,
+  uri: vscode.Uri,
   packages: PackageInfo[],
 ): void {
   const configuration = vscode.workspace.getConfiguration('importCost');
   const budget = configuration.get<number>('budgetKB', 0);
   if (budget <= 0) {
-    collection.delete(vscode.Uri.file(fileName));
+    collection.delete(uri);
     return;
   }
 
@@ -32,15 +32,15 @@ export function updateDiagnostics(
     diagnostics.push(diagnostic);
   }
 
-  collection.set(vscode.Uri.file(fileName), diagnostics);
+  collection.set(uri, diagnostics);
 }
 
 export function clearDiagnostics(): void {
   collection.clear();
 }
 
-export function clearDiagnosticsForFile(fileName: string): void {
-  collection.delete(vscode.Uri.file(fileName));
+export function clearDiagnosticsForFile(uri: vscode.Uri): void {
+  collection.delete(uri);
 }
 
 export function dispose(): void {

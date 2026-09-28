@@ -59,6 +59,14 @@ const CAPABILITY_GROUPS: Record<string, string[]> = {
   ],
 };
 
+const COMPANIONS: Record<string, string> = {
+  'moment-timezone': 'moment',
+  '@emotion/styled': '@emotion/react',
+  '@reduxjs/toolkit': 'redux',
+  motion: 'framer-motion',
+  '@react-spring/web': 'react-spring',
+};
+
 const pkgToCategory = new Map<string, string>();
 for (const [category, packages] of Object.entries(CAPABILITY_GROUPS)) {
   for (const pkg of packages) {
@@ -89,7 +97,8 @@ export function detectDuplicates(
 
   const duplicates: DuplicateGroup[] = [];
   for (const [category, packages] of found) {
-    if (packages.length < 2) continue;
+    const families = new Set(packages.map(p => COMPANIONS[p] ?? p));
+    if (families.size < 2) continue;
     duplicates.push({ category, packages });
   }
   return duplicates;
@@ -97,6 +106,13 @@ export function detectDuplicates(
 
 export function updateDuplicateDiagnostics(index: WorkspaceImportIndex): void {
   collection.clear();
+  if (
+    !vscode.workspace
+      .getConfiguration('importCost')
+      .get('duplicateDetection', true)
+  ) {
+    return;
+  }
   const duplicates = detectDuplicates(index);
   if (duplicates.length === 0) return;
 
@@ -104,29 +120,29 @@ export function updateDuplicateDiagnostics(index: WorkspaceImportIndex): void {
 
   for (const group of duplicates) {
     const otherPkgs = (pkg: string) =>
-      group.packages.filter(p => p !== pkg).join(', ');
+      group.packages
+        .filter(p => (COMPANIONS[p] ?? p) !== (COMPANIONS[pkg] ?? pkg))
+        .join(', ');
 
     for (const pkg of group.packages) {
       const fileMap = index.getPackageFiles(pkg);
       for (const [file, records] of fileMap) {
-        for (const rec of records) {
-          const line = rec.line - 1;
-          const range = new vscode.Range(line, 0, line, 1000);
-          const diagnostic = new vscode.Diagnostic(
-            range,
-            `Duplicate ${group.category}: "${pkg}" — project also uses ${otherPkgs(pkg)}`,
-            vscode.DiagnosticSeverity.Information,
-          );
-          diagnostic.source = 'Import Cost';
-          diagnostic.code = 'duplicate-capability';
+        const line = Math.min(...records.map(rec => rec.line)) - 1;
+        const range = new vscode.Range(line, 0, line, 1000);
+        const diagnostic = new vscode.Diagnostic(
+          range,
+          `Duplicate ${group.category}: "${pkg}" — project also uses ${otherPkgs(pkg)}`,
+          vscode.DiagnosticSeverity.Information,
+        );
+        diagnostic.source = 'Import Cost';
+        diagnostic.code = 'duplicate-capability';
 
-          let list = fileDiagnostics.get(file);
-          if (!list) {
-            list = [];
-            fileDiagnostics.set(file, list);
-          }
-          list.push(diagnostic);
+        let list = fileDiagnostics.get(file);
+        if (!list) {
+          list = [];
+          fileDiagnostics.set(file, list);
         }
+        list.push(diagnostic);
       }
     }
   }

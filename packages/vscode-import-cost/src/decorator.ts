@@ -1,14 +1,14 @@
 import { filesize as fileSize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
-import * as path from 'path';
+import { ALTERNATIVES } from 'import-cost-core';
 import * as vscode from 'vscode';
-import { ALTERNATIVES } from './alternatives';
+import { documentPath } from './document';
 import logger from './logger';
 import type { WorkspaceImportIndex } from './workspace-index';
 
 const decorations: Record<string, Record<number, PackageInfo>> = {};
 const decorationType = vscode.window.createTextEditorDecorationType({});
-let activeEditor = vscode.window.activeTextEditor;
+const flushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 let workspaceIndex: WorkspaceImportIndex | null = null;
 
 export function setWorkspaceIndex(index: WorkspaceImportIndex | null): void {
@@ -62,6 +62,7 @@ export function calculated(fileName: string, packageInfo: PackageInfo): void {
   } else {
     logger.log(`Calculated: ${JSON.stringify(packageInfo)}`);
   }
+  if (!decorations[fileName]) decorations[fileName] = {};
   decorate(fileName, packageInfo);
   flushDecorationsDebounced(fileName);
 }
@@ -236,6 +237,14 @@ function getImportSpecifierCount(importString: string): number | null {
   return match[1].split(',').filter(s => s.trim()).length;
 }
 
+function sideEffectsLabel(sideEffects: PackageInfo['sideEffects']): string {
+  if (Array.isArray(sideEffects)) {
+    const n = sideEffects.length;
+    return `partial (${n} pattern${n === 1 ? '' : 's'})`;
+  }
+  return sideEffects ? 'true' : 'false (unused modules can be dropped)';
+}
+
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   const pkgSize = pkg.size ?? 0;
   const pkgGzip = pkg.gzip ?? 0;
@@ -245,8 +254,7 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   const sizeKB = pkgSize / 1024;
 
   const md = new vscode.MarkdownString();
-  md.supportHtml = true;
-  md.isTrusted = true;
+  md.supportThemeIcons = true;
   md.appendMarkdown(
     `**${pkg.name}**${pkg.version ? ` \`${pkg.version.split('@').pop()}\`` : ''}\n\n`,
   );
@@ -254,6 +262,11 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   if (pkg.estimated) {
     md.appendMarkdown(
       `*⚠ Estimated size — bundling failed, showing entry file size.*\n\n`,
+    );
+  }
+  if (pkg.local) {
+    md.appendMarkdown(
+      `*Local workspace package: recalculated on every change, never cached.*\n\n`,
     );
   }
 
@@ -267,15 +280,10 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
   }
 
-  if (pkg.sideEffects === false) {
-    md.appendMarkdown(`| Tree-shakeable | Yes |\n`);
-  } else if (
-    pkg.sideEffects === true ||
-    (pkg.sideEffects === undefined && sizeKB > 50)
-  ) {
-    md.appendMarkdown(`| Tree-shakeable | No (has side effects) |\n`);
-  } else if (Array.isArray(pkg.sideEffects)) {
-    md.appendMarkdown(`| Tree-shakeable | Partial |\n`);
+  if (pkg.sideEffects !== undefined) {
+    md.appendMarkdown(
+      `| sideEffects | ${sideEffectsLabel(pkg.sideEffects)} |\n`,
+    );
   }
 
   const specCount = pkg.string ? getImportSpecifierCount(pkg.string) : null;
@@ -312,26 +320,27 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   }
 
   if (workspaceIndex?.isReady) {
-    const sharing = workspaceIndex.getPackageSharing(pkg.name, pkg.fileName);
+    const { otherFiles } = workspaceIndex.getPackageSharing(
+      pkg.name,
+      pkg.fileName,
+    );
     md.appendMarkdown(`\n---\n`);
-    if (sharing.totalFiles > 1) {
+    if (otherFiles.length > 0) {
       md.appendMarkdown(
-        `**Workspace usage:** imported in ${sharing.totalFiles} files\n\n`,
+        `**Workspace usage:** also imported by ${otherFiles.length} other file${otherFiles.length === 1 ? '' : 's'} in this package\n\n`,
       );
-      const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
-      const shown = sharing.otherFiles.slice(0, 5);
-      for (const f of shown) {
-        md.appendMarkdown(`- \`${root ? path.relative(root, f) : f}\`\n`);
+      for (const f of otherFiles.slice(0, 5)) {
+        md.appendMarkdown(`- \`${vscode.workspace.asRelativePath(f)}\`\n`);
       }
-      if (sharing.otherFiles.length > 5) {
-        md.appendMarkdown(`- *...and ${sharing.otherFiles.length - 5} more*\n`);
+      if (otherFiles.length > 5) {
+        md.appendMarkdown(`- *...and ${otherFiles.length - 5} more*\n`);
       }
       md.appendMarkdown(
-        `\n*Shared dependency — marginal cost in this file is ~0 KB.*\n`,
+        `\n*Adds little to the bundle if those files ship in the same bundle.*\n`,
       );
     } else {
       md.appendMarkdown(
-        `**Workspace usage:** unique to this file — full bundle cost applies.\n`,
+        `**Workspace usage:** no other file in this package imports it.\n`,
       );
     }
   }
@@ -384,37 +393,41 @@ function failedDecoration(
   };
 }
 
-let decorationsDebounce: ReturnType<typeof setTimeout>;
 function flushDecorationsDebounced(fileName: string): void {
-  clearTimeout(decorationsDebounce);
-  decorationsDebounce = setTimeout(() => applyDecorations(fileName), 10);
+  clearTimeout(flushTimers.get(fileName));
+  flushTimers.set(
+    fileName,
+    setTimeout(() => {
+      flushTimers.delete(fileName);
+      applyDecorations(fileName);
+    }, 10),
+  );
+}
+
+function editorsFor(fileName: string): vscode.TextEditor[] {
+  return vscode.window.visibleTextEditors.filter(
+    editor => documentPath(editor.document) === fileName,
+  );
 }
 
 function applyDecorations(fileName: string): void {
   const arr = buildDecorationArray(fileName);
-  if (activeEditor && activeEditor.document.fileName === fileName) {
-    activeEditor.setDecorations(decorationType, arr);
-  }
-  vscode.window.visibleTextEditors
-    .filter(
-      editor =>
-        editor !== activeEditor && editor.document.fileName === fileName,
-    )
-    .forEach(editor => {
-      editor.setDecorations(decorationType, arr);
-    });
-}
-
-export function onDidChangeActiveEditor(editor: vscode.TextEditor): void {
-  activeEditor = editor;
-  if (editor) {
-    const fileName = editor.document.fileName;
-    const arr = buildDecorationArray(fileName);
+  for (const editor of editorsFor(fileName)) {
     editor.setDecorations(decorationType, arr);
   }
 }
 
+export function onDidChangeActiveEditor(editor: vscode.TextEditor): void {
+  const fileName = documentPath(editor.document);
+  editor.setDecorations(
+    decorationType,
+    fileName ? buildDecorationArray(fileName) : [],
+  );
+}
+
 export function clearDecorations(): void {
+  flushTimers.forEach(clearTimeout);
+  flushTimers.clear();
   vscode.window.visibleTextEditors.forEach(textEditor => {
     textEditor.setDecorations(decorationType, []);
   });
@@ -422,9 +435,11 @@ export function clearDecorations(): void {
 
 export function clearDecorationsForFile(fileName: string): void {
   delete decorations[fileName];
-  vscode.window.visibleTextEditors
-    .filter(e => e.document.fileName === fileName)
-    .forEach(e => e.setDecorations(decorationType, []));
+  clearTimeout(flushTimers.get(fileName));
+  flushTimers.delete(fileName);
+  for (const editor of editorsFor(fileName)) {
+    editor.setDecorations(decorationType, []);
+  }
 }
 
 export function hasDecorations(fileName: string): boolean {

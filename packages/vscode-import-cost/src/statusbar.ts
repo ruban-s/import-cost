@@ -1,13 +1,12 @@
 import { filesize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
-import {
-  normalizePackageName,
-  type WorkspaceImportIndex,
-} from './workspace-index';
+import { documentPath } from './document';
+import type { WorkspaceImportIndex } from './workspace-index';
 
 let statusBarItem: vscode.StatusBarItem;
 let workspaceIndex: WorkspaceImportIndex | null = null;
+let enabled = true;
 
 export function setWorkspaceIndex(index: WorkspaceImportIndex | null): void {
   workspaceIndex = index;
@@ -27,14 +26,23 @@ const fileTotals: Record<
   }
 > = {};
 
+function activeFileName(): string | null {
+  const document = vscode.window.activeTextEditor?.document;
+  return (document && documentPath(document)) ?? null;
+}
+
 export function init(): void {
   statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
   );
-  statusBarItem.command = 'importCost.clearCache';
-  statusBarItem.show();
+  statusBarItem.command = 'importCost.optimizationReport';
   update(null);
+}
+
+export function setEnabled(on: boolean): void {
+  enabled = on;
+  update(activeFileName());
 }
 
 export function setFileCost(fileName: string, packages: PackageInfo[]): void {
@@ -56,14 +64,11 @@ export function setFileCost(fileName: string, packages: PackageInfo[]): void {
 
   const idx = workspaceIndex;
   if (idx?.isReady) {
-    const uniquePkgs = packages.filter(pkg => {
-      if ((pkg.size || 0) <= 0) return false;
-      const sharing = idx.getPackageSharing(
-        normalizePackageName(pkg.name),
-        fileName,
-      );
-      return sharing.isUnique;
-    });
+    const uniquePkgs = packages.filter(
+      pkg =>
+        (pkg.size || 0) > 0 &&
+        idx.getPackageSharing(pkg.name, fileName).isUnique,
+    );
     uniqueTotal = uniquePkgs.reduce((sum, pkg) => sum + (pkg.size || 0), 0);
     uniqueGzip = uniquePkgs.reduce((sum, pkg) => sum + (pkg.gzip || 0), 0);
     uniqueCount = uniquePkgs.length;
@@ -79,18 +84,18 @@ export function setFileCost(fileName: string, packages: PackageInfo[]): void {
     uniqueGzip,
     uniqueCount,
   };
-  if (vscode.window.activeTextEditor?.document.fileName === fileName) {
+  if (activeFileName() === fileName) {
     update(fileName);
   }
 }
 
 function update(fileName: string | null): void {
   if (!statusBarItem) return;
-  if (!fileName || !fileTotals[fileName]) {
-    statusBarItem.text = '$(package) Import Cost';
-    statusBarItem.tooltip = 'No imports calculated';
+  if (!enabled || !fileName || !fileTotals[fileName]) {
+    statusBarItem.hide();
     return;
   }
+  statusBarItem.show();
   const { total, gzip, brotli, count, overBudget, uniqueTotal, uniqueCount } =
     fileTotals[fileName];
   if (total === 0) {
@@ -118,8 +123,9 @@ function update(fileName: string | null): void {
   }
   if (uniqueTotal < total) {
     const sharedCount = count - uniqueCount;
-    tip += `\n📦 ${uniqueCount} unique, ${sharedCount} shared with other files`;
+    tip += `\n📦 ${uniqueCount} unique, ${sharedCount} shared with other files in this package`;
   }
+  tip += '\nClick for the optimization report';
   statusBarItem.tooltip = tip;
 }
 

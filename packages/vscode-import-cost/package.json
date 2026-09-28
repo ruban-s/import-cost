@@ -61,7 +61,7 @@
         },
         "importCost.mediumPackageDarkColor": {
           "type": "string",
-          "default": "#7cc36e",
+          "default": "#d29922",
           "description": "Decoration color for medium packages in dark theme"
         },
         "importCost.largePackageDarkColor": {
@@ -76,7 +76,7 @@
         },
         "importCost.mediumPackageLightColor": {
           "type": "string",
-          "default": "#7cc36e",
+          "default": "#9a6700",
           "description": "Decoration color for medium packages in light theme"
         },
         "importCost.largePackageLightColor": {
@@ -102,14 +102,14 @@
         "importCost.typescriptExtensions": {
           "type": "array",
           "default": [
-            "\\.tsx?$"
+            "\\.[cm]?tsx?$"
           ],
           "description": "File extensions to be parsed by the Typescript parser"
         },
         "importCost.javascriptExtensions": {
           "type": "array",
           "default": [
-            "\\.jsx?$"
+            "\\.[cm]?jsx?$"
           ],
           "description": "File extensions to be parsed by the Javascript parser"
         },
@@ -173,7 +173,7 @@
         "importCost.ignoredPackages": {
           "type": "array",
           "default": [],
-          "description": "List of package names to skip size calculation for",
+          "description": "Package names or glob patterns (e.g. \"@angular/*\") that are never resolved or bundled",
           "items": {
             "type": "string"
           }
@@ -186,7 +186,17 @@
         "importCost.showWorkspaceSharing": {
           "type": "boolean",
           "default": true,
-          "description": "Show 'shared N files' tag on inline decorations for packages imported in multiple files"
+          "description": "Show 'shared N files' tag on inline decorations for packages imported by other files in the same package"
+        },
+        "importCost.duplicateDetection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Report packages that duplicate a capability already used in the workspace (e.g. two date libraries)"
+        },
+        "importCost.packageJsonDevDependencies": {
+          "type": "boolean",
+          "default": false,
+          "description": "Also measure devDependencies when viewing package.json (dev tools are usually not shipped and can be very large to bundle)"
         }
       }
     },
@@ -208,7 +218,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "pretest": "node build.mts && tsc -p test",
-    "build": "node build.mts && npx @vscode/vsce package --no-dependencies",
+    "build": "node build-platforms.mts host",
     "build:platform": "node build-platforms.mts",
     "test": "node ./out/test/index.js"
   },

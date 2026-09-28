@@ -1,24 +1,55 @@
 import { filesize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
-import { importCost, Lang } from 'import-cost-core';
+import { ALTERNATIVES, importCost, isIgnored, Lang } from 'import-cost-core';
+import * as path from 'path';
 import * as vscode from 'vscode';
-import { ALTERNATIVES } from './alternatives';
+import { documentPath, ignorePatternsFor } from './document';
+import logger from './logger';
 
 const decorationType = vscode.window.createTextEditorDecorationType({});
 const decorations: Record<string, Record<number, PackageInfo>> = {};
 const previousDeps: Record<string, Record<string, string>> = {};
-let activeEditor: vscode.TextEditor | null = null;
+const dependencyLines: Record<string, Record<string, number>> = {};
+let enabled = true;
 
 export function isPackageJson(document?: vscode.TextDocument): boolean {
-  return !!document?.fileName?.endsWith('package.json');
+  const fileName = document && documentPath(document);
+  return !!fileName && path.basename(fileName) === 'package.json';
+}
+
+const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export function findDependencyLines(
+  text: string,
+  names: string[],
+): Record<string, number> {
+  const lines: Record<string, number> = {};
+  for (const block of ['dependencies', 'devDependencies']) {
+    const start = text.search(new RegExp(`"${block}"\\s*:\\s*\\{`));
+    if (start < 0) continue;
+    const end = text.indexOf('}', start);
+    const body = text.slice(start, end < 0 ? undefined : end);
+    for (const name of names) {
+      if (lines[name]) continue;
+      const offset = body.search(new RegExp(`"${escapeRegExp(name)}"\\s*:`));
+      if (offset >= 0) {
+        lines[name] = text.slice(0, start + offset).split('\n').length;
+      }
+    }
+  }
+  return lines;
+}
+
+function place(fileName: string, pkg: PackageInfo): void {
+  const line = dependencyLines[fileName]?.[pkg.name];
+  const fileDecorations = decorations[fileName];
+  if (line && fileDecorations) fileDecorations[line] = { ...pkg, line };
 }
 
 export function processPackageJson(document: vscode.TextDocument): void {
-  if (!isPackageJson(document)) return;
-
-  const fileName = document.fileName;
+  const fileName = documentPath(document);
+  if (!fileName || path.basename(fileName) !== 'package.json') return;
   const text = document.getText();
-  const lines = text.split('\n');
 
   let pkgJson: Record<string, any>;
   try {
@@ -27,96 +58,72 @@ export function processPackageJson(document: vscode.TextDocument): void {
     return;
   }
 
+  const configuration = vscode.workspace.getConfiguration('importCost');
   const allDeps: Record<string, string> = {
     ...(pkgJson.dependencies || {}),
-    ...(pkgJson.devDependencies || {}),
+    ...(configuration.get('packageJsonDevDependencies', false)
+      ? pkgJson.devDependencies || {}
+      : {}),
   };
 
+  const ignorePatterns = ignorePatternsFor(document);
   const depNames = Object.keys(allDeps).filter(
-    name => !name.startsWith('@types/'),
+    name => !name.startsWith('@types/') && !isIgnored(name, ignorePatterns),
   );
-  if (depNames.length === 0) return;
-
-  const depLines: Record<string, number> = {};
-  for (const name of depNames) {
-    for (let i = 0; i < lines.length; i++) {
-      if (lines[i].includes(`"${name}"`)) {
-        depLines[name] = i + 1;
-        break;
-      }
-    }
-  }
+  const depLines = findDependencyLines(text, depNames);
+  dependencyLines[fileName] = depLines;
 
   const prev = previousDeps[fileName] || {};
-  const changedDeps = depNames.filter(
-    name => !prev[name] || prev[name] !== allDeps[name],
-  );
-  const removedDeps = Object.keys(prev).filter(
-    name => !allDeps[name] || name.startsWith('@types/'),
+  const changedDeps = depNames.filter(name => prev[name] !== allDeps[name]);
+  previousDeps[fileName] = Object.fromEntries(
+    depNames.map(name => [name, allDeps[name]]),
   );
 
-  previousDeps[fileName] = { ...allDeps };
-
-  if (removedDeps.length > 0 && decorations[fileName]) {
-    for (const name of removedDeps) {
-      for (const [line, pkg] of Object.entries(decorations[fileName])) {
-        if (pkg.name === name) {
-          delete decorations[fileName][Number(line)];
-        }
-      }
-    }
+  const kept: Record<number, PackageInfo> = {};
+  for (const pkg of Object.values(decorations[fileName] ?? {})) {
+    const line = depLines[pkg.name];
+    if (line && !changedDeps.includes(pkg.name)) kept[line] = { ...pkg, line };
   }
+  decorations[fileName] = kept;
 
-  const depsToCalculate =
-    Object.keys(prev).length === 0 ? depNames : changedDeps;
-  if (depsToCalculate.length === 0) {
+  if (changedDeps.length === 0) {
     applyDecorations(fileName);
     return;
   }
 
-  const importStatements = depsToCalculate
+  const importStatements = changedDeps
     .map(
       name =>
         `import * as _${name.replace(/[^a-zA-Z0-9]/g, '_')} from '${name}';`,
     )
     .join('\n');
 
-  const { timeout } = vscode.workspace.getConfiguration('importCost');
-  const config = { concurrent: true, maxCallTime: timeout || 20000 };
+  const emitter = importCost(fileName, importStatements, Lang.JAVASCRIPT, {
+    maxCallTime: configuration.get<number>('timeout', 20000),
+  });
 
-  const emitter = importCost(
-    fileName,
-    importStatements,
-    Lang.JAVASCRIPT,
-    config,
-  );
-
-  if (!decorations[fileName]) {
-    decorations[fileName] = {};
-  }
   const seen = new Set<string>();
+
+  emitter.on('error', (e: Error) =>
+    logger.log(`importCost error (package.json): ${e}`),
+  );
 
   emitter.on('calculated', (pkg: PackageInfo) => {
     seen.add(pkg.name);
-    const line = depLines[pkg.name];
-    if (line) {
-      decorations[fileName][line] = pkg;
-      applyDecorations(fileName);
-    }
+    place(fileName, pkg);
+    applyDecorations(fileName);
   });
 
   emitter.on('done', () => {
-    for (const name of depsToCalculate) {
+    for (const name of changedDeps) {
       if (seen.has(name)) continue;
-      const line = depLines[name];
-      if (!line) continue;
-      decorations[fileName][line] = {
+      place(fileName, {
         fileName,
         name,
-        line,
+        line: 0,
         string: '',
         error: new Error('Package not found in node_modules'),
-      };
+      });
     }
     applyDecorations(fileName);
   });
@@ -138,35 +145,31 @@ function getDecorationColor(pkg: PackageInfo) {
     light: { after: { color: light } },
   });
 
-  if (pkg.error || !pkg.size) {
-    return color('#888888', '#999999');
-  }
-
-  if ((pkg as any).estimated) {
+  if (pkg.error || !pkg.size || pkg.estimated) {
     return color('#888888', '#999999');
   }
 
   if (isOverBudget(pkg)) {
     return color(
-      configuration.largePackageDarkColor || '#d44e40',
-      configuration.largePackageLightColor || '#d44e40',
+      configuration.largePackageDarkColor,
+      configuration.largePackageLightColor,
     );
   }
 
-  if (sizeInKB < (configuration.smallPackageSize || 50)) {
+  if (sizeInKB < configuration.smallPackageSize) {
     return color(
-      configuration.smallPackageDarkColor || '#7cc36e',
-      configuration.smallPackageLightColor || '#7cc36e',
+      configuration.smallPackageDarkColor,
+      configuration.smallPackageLightColor,
     );
-  } else if (sizeInKB < (configuration.mediumPackageSize || 100)) {
+  } else if (sizeInKB < configuration.mediumPackageSize) {
     return color(
-      configuration.mediumPackageDarkColor || '#7cc36e',
-      configuration.mediumPackageLightColor || '#7cc36e',
+      configuration.mediumPackageDarkColor,
+      configuration.mediumPackageLightColor,
     );
   } else {
     return color(
-      configuration.largePackageDarkColor || '#d44e40',
-      configuration.largePackageLightColor || '#d44e40',
+      configuration.largePackageDarkColor,
+      configuration.largePackageLightColor,
     );
   }
 }
@@ -179,11 +182,10 @@ function buildLabel(pkg: PackageInfo): string {
     return '~ bundle failed';
   }
 
-  const estimated = (pkg as any).estimated;
-  const prefix = estimated ? '~' : '';
+  const prefix = pkg.estimated ? '~' : '';
   const configuration = vscode.workspace.getConfiguration('importCost');
   const size = prefix + filesize(pkg.size, { standard: 'jedec' });
-  const gzip = prefix + filesize(pkg.gzip!, { standard: 'jedec' });
+  const gzip = prefix + filesize(pkg.gzip ?? 0, { standard: 'jedec' });
   const brotli = pkg.brotli
     ? prefix + filesize(pkg.brotli, { standard: 'jedec' })
     : null;
@@ -217,8 +219,7 @@ function buildLabel(pkg: PackageInfo): string {
 
 function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   const md = new vscode.MarkdownString();
-  md.supportHtml = true;
-  md.isTrusted = true;
+  md.supportThemeIcons = true;
   md.appendMarkdown(`**${pkg.name}**\n\n`);
 
   if (pkg.error || !pkg.size) {
@@ -237,22 +238,22 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
     return md;
   }
 
-  if ((pkg as any).estimated) {
+  if (pkg.estimated) {
     md.appendMarkdown(
       `*⚠ Estimated size — bundling failed, showing entry file size.*\n\n`,
     );
   }
 
   const size = filesize(pkg.size, { standard: 'jedec' });
-  const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
-  const gzipRatio = ((pkg.gzip! / pkg.size) * 100).toFixed(0);
+  const gzip = filesize(pkg.gzip ?? 0, { standard: 'jedec' });
+  const gzipRatio = (((pkg.gzip ?? 0) / pkg.size) * 100).toFixed(0);
 
   md.appendMarkdown(`| Metric | Value |\n|---|---|\n`);
   md.appendMarkdown(`| Minified | ${size} |\n`);
   md.appendMarkdown(`| Gzipped | ${gzip} (${gzipRatio}% of minified) |\n`);
   if (pkg.brotli) {
     const brotli = filesize(pkg.brotli, { standard: 'jedec' });
-    const brotliRatio = ((pkg.brotli / pkg.size!) * 100).toFixed(0);
+    const brotliRatio = ((pkg.brotli / pkg.size) * 100).toFixed(0);
     md.appendMarkdown(`| Brotli | ${brotli} (${brotliRatio}% of minified) |\n`);
   }
 
@@ -278,8 +279,14 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   return md;
 }
 
+function editorsFor(fileName: string): vscode.TextEditor[] {
+  return vscode.window.visibleTextEditors.filter(
+    editor => documentPath(editor.document) === fileName,
+  );
+}
+
 function applyDecorations(fileName: string): void {
-  if (!decorations[fileName]) return;
+  if (!enabled || !decorations[fileName]) return;
   const configuration = vscode.workspace.getConfiguration('importCost');
   const arr: vscode.DecorationOptions[] = [];
 
@@ -289,8 +296,8 @@ function applyDecorations(fileName: string): void {
         ...getDecorationColor(pkg),
         after: {
           contentText: `  ${buildLabel(pkg)}`,
-          margin: `0 0 0 ${configuration.margin || 1}rem`,
-          fontStyle: configuration.fontStyle || 'normal',
+          margin: `0 0 0 ${configuration.margin}rem`,
+          fontStyle: configuration.fontStyle,
         },
       },
       range: new vscode.Range(
@@ -302,22 +309,35 @@ function applyDecorations(fileName: string): void {
     arr.push(dec);
   }
 
-  if (activeEditor && activeEditor.document.fileName === fileName) {
-    activeEditor.setDecorations(decorationType, arr);
+  for (const editor of editorsFor(fileName)) {
+    editor.setDecorations(decorationType, arr);
   }
 }
 
 export function onEditorChange(editor: vscode.TextEditor): void {
-  activeEditor = editor;
-  if (editor && isPackageJson(editor.document)) {
-    applyDecorations(editor.document.fileName);
+  const fileName = documentPath(editor.document);
+  if (fileName && isPackageJson(editor.document)) {
+    applyDecorations(fileName);
   }
 }
 
+export function setPackageJsonEnabled(on: boolean): void {
+  enabled = on;
+  if (!on) clearPackageJsonDecorations();
+}
+
 export function clearPackageJsonDecorations(): void {
-  if (activeEditor) {
-    activeEditor.setDecorations(decorationType, []);
+  for (const editor of vscode.window.visibleTextEditors) {
+    if (isPackageJson(editor.document)) {
+      editor.setDecorations(decorationType, []);
+    }
   }
+}
+
+export function forgetPackageJson(fileName: string): void {
+  delete decorations[fileName];
+  delete previousDeps[fileName];
+  delete dependencyLines[fileName];
 }
 
 export function hasPackageJsonDecorations(fileName: string): boolean {

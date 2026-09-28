@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { extensions, window, workspace } from 'vscode';
+import * as path from 'path';
+import { commands, extensions, window, workspace } from 'vscode';
 
 interface Logger {
   onLog(listener: (text: string) => void): void;
@@ -10,6 +11,9 @@ interface Calculated {
   size: number;
   gzip: number;
 }
+
+const fixture = (name: string) =>
+  path.resolve(__dirname, '../../../test/fixtures', name);
 
 function whenDone(emitter: Logger, pkg: string): Promise<Calculated> {
   return new Promise(resolve => {
@@ -24,15 +28,15 @@ function whenDone(emitter: Logger, pkg: string): Promise<Calculated> {
   });
 }
 
-async function importCost(
-  content: string,
-  language = 'javascript',
-): Promise<Logger> {
-  const doc = await workspace.openTextDocument({ content, language });
-  await window.showTextDocument(doc);
-  const extension = extensions.getExtension('ruban-s.fast-import-cost')!;
+async function activate(): Promise<Logger> {
+  const extension = extensions.getExtension('ruban-s.fast-import-cost');
+  assert.ok(extension, 'extension not found');
   await extension.activate();
   return extension.exports.logger;
+}
+
+async function open(fileName: string): Promise<void> {
+  await window.showTextDocument(await workspace.openTextDocument(fileName));
 }
 
 function assertWithin(
@@ -47,20 +51,23 @@ function assertWithin(
   );
 }
 
-async function verify(
-  fixture: string,
-  pkg = 'chai',
-  minSize = 10000,
-  maxSize = 15000,
-  gzipLowBound = 0.01,
-  gzipHighBound = 0.8,
-): Promise<void> {
-  const { size, gzip } = await whenDone(await importCost(fixture), pkg);
-  assertWithin(size, minSize, maxSize, 'size');
-  assertWithin(gzip, size * gzipLowBound, size * gzipHighBound, 'gzip');
-}
-
 describe('Import Cost VSCode Extension', () => {
-  it('Should report module bundle size', () =>
-    verify('const fileSize = require("filesize");\n', 'filesize', 1000, 20000));
+  it('Should report module bundle size', async () => {
+    const logger = await activate();
+    const done = whenDone(logger, 'filesize');
+    await open(fixture('require-filesize.js'));
+    const { size, gzip } = await done;
+    assertWithin(size, 1000, 20000, 'size');
+    assertWithin(gzip, size * 0.01, size * 0.8, 'gzip');
+  });
+
+  it('Toggles off, on and off again without throwing', async () => {
+    await activate();
+    await open(fixture('require-filesize.js'));
+    for (let i = 0; i < 3; i++) {
+      await commands.executeCommand('importCost.toggle');
+      await new Promise(resolve => setTimeout(resolve, 300));
+    }
+    await commands.executeCommand('importCost.toggle');
+  });
 });

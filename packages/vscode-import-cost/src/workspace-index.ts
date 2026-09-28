@@ -1,27 +1,18 @@
-import { getPackages, Lang } from 'import-cost-core';
+import { getPackages, Lang, packageName, pkgDir } from 'import-cost-core';
+import * as path from 'path';
 import * as vscode from 'vscode';
 
 export interface ImportRecord {
   fileName: string;
   line: number;
   packageName: string;
+  importPath: string;
 }
 
 export interface PackageSharingInfo {
   totalFiles: number;
   isUnique: boolean;
   otherFiles: string[];
-}
-
-export function normalizePackageName(name: string): string {
-  const parts = name.split('/');
-  let pkgName = parts[0] ?? '';
-  parts.shift();
-  if (pkgName.startsWith('@')) {
-    pkgName = `${pkgName}/${parts[0]}`;
-    parts.shift();
-  }
-  return pkgName;
 }
 
 function langFromPath(fileName: string): Lang | undefined {
@@ -36,6 +27,11 @@ function langFromPath(fileName: string): Lang | undefined {
 
 const SKIP_DIRS =
   /[\\/](?:node_modules|dist|build|coverage|\.next|\.nuxt|\.output|out|\.cache|\.turbo|__pycache__)[\\/]/;
+const NOT_BUNDLED =
+  /[\\/]__tests__[\\/]|\.(?:test|spec|stories|story)\.[cm]?[jt]sx?$|\.config\.[cm]?[jt]s$/;
+const SOURCE_GLOB = '**/*.{ts,tsx,mts,cts,js,jsx,mjs,cjs,vue,svelte}';
+const EXCLUDE_GLOB =
+  '{**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/.next/**,**/.nuxt/**,**/.output/**,**/out/**,**/.cache/**,**/.turbo/**}';
 const MAX_FILE_SIZE = 100 * 1024; // 100KB — skip likely generated/bundled files
 const SCAN_BATCH_SIZE = 50;
 const MAX_FILES = 10000;
@@ -44,38 +40,43 @@ const WATCHER_DEBOUNCE_MS = 300;
 export class WorkspaceImportIndex implements vscode.Disposable {
   private fileIndex = new Map<string, ImportRecord[]>();
   private packageIndex = new Map<string, Map<string, ImportRecord[]>>();
+  private packageRoots = new Map<string, string | null>();
+  private rootLookups = new Map<string, Promise<void>>();
   private watcher: vscode.FileSystemWatcher | null = null;
   private scanning = false;
   private initialized = false;
   private disposed = false;
+  private initPromise: Promise<void> | null = null;
   private pendingWatcherEvents = new Map<string, 'change' | 'delete'>();
   private watcherDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   private _onDidUpdate = new vscode.EventEmitter<void>();
   readonly onDidUpdate = this._onDidUpdate.event;
 
-  async ensureInitialized(): Promise<void> {
-    if (this.initialized || this.scanning) return;
+  ensureInitialized(): Promise<void> {
+    if (this.initPromise) return this.initPromise;
     const folders = vscode.workspace.workspaceFolders;
-    if (folders) await this.init(folders);
+    return folders ? this.init(folders) : Promise.resolve();
   }
 
-  async init(
+  init(workspaceFolders: readonly vscode.WorkspaceFolder[]): Promise<void> {
+    const scan = () => this.scan(workspaceFolders);
+    this.initPromise = (this.initPromise ?? Promise.resolve()).then(scan, scan);
+    return this.initPromise;
+  }
+
+  private async scan(
     workspaceFolders: readonly vscode.WorkspaceFolder[],
   ): Promise<void> {
     this.scanning = true;
     this.fileIndex.clear();
     this.packageIndex.clear();
 
-    const pattern = '**/*.{ts,tsx,js,jsx,vue,svelte}';
-    const exclude =
-      '{**/node_modules/**,**/dist/**,**/build/**,**/coverage/**,**/.next/**,**/.nuxt/**,**/.output/**,**/out/**,**/.cache/**,**/.turbo/**}';
-
     for (const folder of workspaceFolders) {
       if (this.disposed) return;
       const uris = await vscode.workspace.findFiles(
-        new vscode.RelativePattern(folder, pattern),
-        exclude,
+        new vscode.RelativePattern(folder, SOURCE_GLOB),
+        EXCLUDE_GLOB,
         MAX_FILES,
       );
 
@@ -93,8 +94,24 @@ export class WorkspaceImportIndex implements vscode.Disposable {
     this._onDidUpdate.fire();
   }
 
+  private resolveRoot(fileName: string): Promise<void> {
+    const dir = path.dirname(fileName);
+    let lookup = this.rootLookups.get(dir);
+    if (!lookup) {
+      lookup = pkgDir(dir).then(root => {
+        this.packageRoots.set(dir, root ?? null);
+      });
+      this.rootLookups.set(dir, lookup);
+    }
+    return lookup;
+  }
+
+  private rootOf(fileName: string): string | null | undefined {
+    return this.packageRoots.get(path.dirname(fileName));
+  }
+
   private async scanFile(fileName: string): Promise<void> {
-    if (SKIP_DIRS.test(fileName)) return;
+    if (SKIP_DIRS.test(fileName) || NOT_BUNDLED.test(fileName)) return;
     const lang = langFromPath(fileName);
     if (!lang) return;
 
@@ -105,8 +122,8 @@ export class WorkspaceImportIndex implements vscode.Disposable {
       const bytes = await vscode.workspace.fs.readFile(
         vscode.Uri.file(fileName),
       );
-      const text = Buffer.from(bytes).toString('utf-8');
-      this.indexFile(fileName, text, lang);
+      await this.resolveRoot(fileName);
+      this.indexFile(fileName, Buffer.from(bytes).toString('utf-8'), lang);
     } catch {
       // file unreadable — skip
     }
@@ -125,20 +142,25 @@ export class WorkspaceImportIndex implements vscode.Disposable {
     const records: ImportRecord[] = [];
     for (const pkg of packages) {
       if (pkg.name.startsWith('.')) continue;
-      const packageName = normalizePackageName(pkg.name);
-      records.push({ fileName, line: pkg.line, packageName });
+      const record: ImportRecord = {
+        fileName,
+        line: pkg.line,
+        packageName: packageName(pkg.name),
+        importPath: pkg.name,
+      };
+      records.push(record);
 
-      let fileMap = this.packageIndex.get(packageName);
+      let fileMap = this.packageIndex.get(record.packageName);
       if (!fileMap) {
         fileMap = new Map();
-        this.packageIndex.set(packageName, fileMap);
+        this.packageIndex.set(record.packageName, fileMap);
       }
       let fileRecords = fileMap.get(fileName);
       if (!fileRecords) {
         fileRecords = [];
         fileMap.set(fileName, fileRecords);
       }
-      fileRecords.push({ fileName, line: pkg.line, packageName });
+      fileRecords.push(record);
     }
 
     this.fileIndex.set(fileName, records);
@@ -161,7 +183,10 @@ export class WorkspaceImportIndex implements vscode.Disposable {
     this.fileIndex.delete(fileName);
   }
 
-  updateFile(fileName: string, text: string, lang: Lang): void {
+  async updateFile(fileName: string, text: string, lang: Lang): Promise<void> {
+    await this.resolveRoot(fileName);
+    if (this.disposed || SKIP_DIRS.test(fileName) || NOT_BUNDLED.test(fileName))
+      return;
     this.indexFile(fileName, text, lang);
     this._onDidUpdate.fire();
   }
@@ -171,41 +196,22 @@ export class WorkspaceImportIndex implements vscode.Disposable {
     this._onDidUpdate.fire();
   }
 
-  getPackageSharing(packageName: string, forFile: string): PackageSharingInfo {
-    const normalized = normalizePackageName(packageName);
-    const fileMap = this.packageIndex.get(normalized);
-    if (!fileMap) return { totalFiles: 0, isUnique: true, otherFiles: [] };
+  getPackageSharing(importPath: string, forFile: string): PackageSharingInfo {
+    const fileMap = this.packageIndex.get(packageName(importPath));
+    if (!fileMap) return { totalFiles: 1, isUnique: true, otherFiles: [] };
 
-    const totalFiles = fileMap.size;
+    const root = this.rootOf(forFile);
     const otherFiles: string[] = [];
     for (const f of fileMap.keys()) {
-      if (f !== forFile) otherFiles.push(f);
+      if (f === forFile) continue;
+      if (root !== undefined && this.rootOf(f) !== root) continue;
+      otherFiles.push(f);
     }
-    return { totalFiles, isUnique: totalFiles <= 1, otherFiles };
-  }
-
-  getFileStats(fileName: string): {
-    uniquePackages: string[];
-    sharedPackages: string[];
-  } {
-    const records = this.fileIndex.get(fileName);
-    if (!records) return { uniquePackages: [], sharedPackages: [] };
-
-    const seen = new Set<string>();
-    const uniquePackages: string[] = [];
-    const sharedPackages: string[] = [];
-
-    for (const rec of records) {
-      if (seen.has(rec.packageName)) continue;
-      seen.add(rec.packageName);
-      const sharing = this.getPackageSharing(rec.packageName, fileName);
-      if (sharing.isUnique) {
-        uniquePackages.push(rec.packageName);
-      } else {
-        sharedPackages.push(rec.packageName);
-      }
-    }
-    return { uniquePackages, sharedPackages };
+    return {
+      totalFiles: otherFiles.length + 1,
+      isUnique: otherFiles.length === 0,
+      otherFiles,
+    };
   }
 
   getAllPackageNames(): Set<string> {
@@ -216,15 +222,17 @@ export class WorkspaceImportIndex implements vscode.Disposable {
     return this.packageIndex.get(packageName) ?? new Map();
   }
 
+  get fileCount(): number {
+    return this.fileIndex.size;
+  }
+
   get isReady(): boolean {
     return this.initialized && !this.scanning;
   }
 
   private setupWatcher(): void {
     this.watcher?.dispose();
-    this.watcher = vscode.workspace.createFileSystemWatcher(
-      '**/*.{ts,tsx,js,jsx,vue,svelte}',
-    );
+    this.watcher = vscode.workspace.createFileSystemWatcher(SOURCE_GLOB);
     const enqueue = (uri: vscode.Uri, type: 'change' | 'delete') => {
       if (SKIP_DIRS.test(uri.fsPath)) return;
       this.pendingWatcherEvents.set(uri.fsPath, type);
@@ -254,7 +262,7 @@ export class WorkspaceImportIndex implements vscode.Disposable {
         changed = true;
       }
     }
-    if (changed) this._onDidUpdate.fire();
+    if (changed && !this.disposed) this._onDidUpdate.fire();
   }
 
   dispose(): void {

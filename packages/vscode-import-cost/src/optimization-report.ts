@@ -1,7 +1,7 @@
+import { randomBytes } from 'crypto';
 import type { PackageInfo } from 'import-cost-core';
-import * as path from 'path';
+import { ALTERNATIVES, packageName } from 'import-cost-core';
 import * as vscode from 'vscode';
-import { ALTERNATIVES } from './alternatives';
 import { detectDuplicates } from './duplicate-detector';
 import type { WorkspaceImportIndex } from './workspace-index';
 
@@ -16,7 +16,9 @@ interface OptimizationItem {
 
 interface OptimizationReport {
   totalPackages: number;
-  totalFiles: number;
+  indexedFiles: number;
+  measuredFiles: number;
+  totalSavingsKB: number;
   items: OptimizationItem[];
 }
 
@@ -28,60 +30,40 @@ function generateReport(
   const items: OptimizationItem[] = [];
   const decorations = getAllDecorations();
 
-  const packageSizes = new Map<string, number>();
-  const packageFiles = new Map<
-    string,
-    { path: string; line: number; pkg: PackageInfo }[]
-  >();
-
-  for (const [fileName, fileDecos] of decorations) {
-    for (const [, pkg] of Object.entries(fileDecos)) {
+  const rootImportSizes = new Map<string, number>();
+  let measuredFiles = 0;
+  for (const fileDecos of decorations.values()) {
+    let measured = false;
+    for (const pkg of Object.values(fileDecos)) {
       if (!pkg.size || pkg.size <= 0) continue;
-      const name = pkg.name;
-      if (!packageSizes.has(name) || pkg.size > (packageSizes.get(name) ?? 0)) {
-        packageSizes.set(name, pkg.size);
-      }
-      let files = packageFiles.get(name);
-      if (!files) {
-        files = [];
-        packageFiles.set(name, files);
-      }
-      files.push({ path: fileName, line: pkg.line, pkg });
+      measured = true;
+      if (pkg.name !== packageName(pkg.name)) continue;
+      rootImportSizes.set(
+        pkg.name,
+        Math.max(rootImportSizes.get(pkg.name) ?? 0, pkg.size),
+      );
     }
+    if (measured) measuredFiles++;
   }
 
   for (const pkgName of allPackages) {
     const alt = ALTERNATIVES[pkgName];
     if (!alt) continue;
-    const size = packageSizes.get(pkgName);
-    const files = packageFiles.get(pkgName);
-    if (!files) {
-      const idxFiles = index.getPackageFiles(pkgName);
-      const fileList: { path: string; line: number }[] = [];
-      for (const [f, recs] of idxFiles) {
-        for (const rec of recs) {
-          fileList.push({ path: f, line: rec.line });
-        }
+    const files: { path: string; line: number }[] = [];
+    for (const [f, recs] of index.getPackageFiles(pkgName)) {
+      for (const rec of recs) {
+        if (rec.importPath === pkgName) files.push({ path: f, line: rec.line });
       }
-      if (fileList.length > 0) {
-        items.push({
-          type: 'alternative',
-          packageName: pkgName,
-          suggestion: `Replace with ${alt.to}`,
-          reason: alt.reason,
-          estimatedSavingsKB: size ? size / 1024 : 0,
-          files: fileList,
-        });
-      }
-      continue;
     }
+    if (files.length === 0) continue;
+    const size = rootImportSizes.get(pkgName);
     items.push({
       type: 'alternative',
       packageName: pkgName,
       suggestion: `Replace with ${alt.to}`,
       reason: alt.reason,
       estimatedSavingsKB: size ? (size * 0.9) / 1024 : 0,
-      files: files.map(f => ({ path: f.path, line: f.line })),
+      files,
     });
   }
 
@@ -106,29 +88,48 @@ function generateReport(
     });
   }
 
+  const wildcards = new Map<
+    string,
+    { size: number; files: { path: string; line: number }[] }
+  >();
   for (const [fileName, fileDecos] of decorations) {
-    for (const [, pkg] of Object.entries(fileDecos)) {
+    for (const pkg of Object.values(fileDecos)) {
       if (!pkg.size || pkg.size / 1024 < 50) continue;
       if (!pkg.string?.startsWith('import * as ')) continue;
-      items.push({
-        type: 'wildcard',
-        packageName: pkg.name,
-        suggestion: 'Convert to named imports',
-        reason: `import * pulls the entire package — named imports may reduce size`,
-        estimatedSavingsKB: (pkg.size * 0.5) / 1024,
-        files: [{ path: fileName, line: pkg.line }],
-      });
+      const entry = wildcards.get(pkg.name) ?? { size: 0, files: [] };
+      entry.size = Math.max(entry.size, pkg.size);
+      entry.files.push({ path: fileName, line: pkg.line });
+      wildcards.set(pkg.name, entry);
     }
+  }
+  for (const [name, { size, files }] of wildcards) {
+    items.push({
+      type: 'wildcard',
+      packageName: name,
+      suggestion: 'Convert to named imports',
+      reason: `import * pulls the entire package — named imports may reduce size`,
+      estimatedSavingsKB: (size * 0.5) / 1024,
+      files,
+    });
   }
 
   items.sort((a, b) => b.estimatedSavingsKB - a.estimatedSavingsKB);
 
-  const fileSet = new Set<string>();
-  for (const [f] of decorations) fileSet.add(f);
+  const savingsByPackage = new Map<string, number>();
+  for (const item of items) {
+    if (item.type === 'duplicate') continue;
+    const key = packageName(item.packageName);
+    savingsByPackage.set(
+      key,
+      Math.max(savingsByPackage.get(key) ?? 0, item.estimatedSavingsKB),
+    );
+  }
 
   return {
     totalPackages: allPackages.size,
-    totalFiles: fileSet.size,
+    indexedFiles: index.fileCount,
+    measuredFiles,
+    totalSavingsKB: [...savingsByPackage.values()].reduce((a, b) => a + b, 0),
     items,
   };
 }
@@ -151,7 +152,7 @@ export function showOptimizationReport(
     'importCostReport',
     'Import Cost — Optimization Report',
     vscode.ViewColumn.One,
-    { enableScripts: true },
+    { enableScripts: true, localResourceRoots: [] },
   );
 
   const report = generateReport(index, getAllDecorations);
@@ -174,13 +175,9 @@ export function showOptimizationReport(
 }
 
 function buildHtml(report: OptimizationReport): string {
-  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
-  const rel = (p: string) => (root ? path.relative(root, p) : p);
-
-  const totalSavings = report.items.reduce(
-    (sum, i) => sum + i.estimatedSavingsKB,
-    0,
-  );
+  const rel = (p: string) => vscode.workspace.asRelativePath(p);
+  const nonce = randomBytes(16).toString('base64');
+  const totalSavings = report.totalSavingsKB;
 
   const itemsHtml = report.items
     .map(item => {
@@ -192,7 +189,7 @@ function buildHtml(report: OptimizationReport): string {
             : '🔧';
       const savings =
         item.estimatedSavingsKB > 0
-          ? `<span class="savings">-${Math.round(item.estimatedSavingsKB)} KB</span>`
+          ? `<span class="savings" title="Estimated saving">~${Math.round(item.estimatedSavingsKB)} KB</span>`
           : '';
       const filesHtml = item.files
         .slice(0, 5)
@@ -229,6 +226,7 @@ function buildHtml(report: OptimizationReport): string {
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'nonce-${nonce}';">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body {
@@ -351,19 +349,23 @@ function buildHtml(report: OptimizationReport): string {
       <span class="stat-label">packages</span>
     </div>
     <div class="stat">
-      <span class="stat-value">${report.totalFiles}</span>
-      <span class="stat-label">files scanned</span>
+      <span class="stat-value">${report.indexedFiles}</span>
+      <span class="stat-label">files indexed</span>
+    </div>
+    <div class="stat">
+      <span class="stat-value">${report.measuredFiles}</span>
+      <span class="stat-label">files with measured sizes</span>
     </div>
     <div class="stat">
       <span class="stat-value">${report.items.length}</span>
       <span class="stat-label">suggestions</span>
     </div>
-    ${totalSavings > 0 ? `<div class="stat"><span class="stat-value">-${Math.round(totalSavings)} KB</span><span class="stat-label">potential savings</span></div>` : ''}
+    ${totalSavings > 0 ? `<div class="stat"><span class="stat-value">~${Math.round(totalSavings)} KB</span><span class="stat-label">estimated potential savings</span></div>` : ''}
   </div>
   ${report.items.length > 0 ? '<div class="section-title">Suggestions</div>' : ''}
   ${itemsHtml}
   ${noItems}
-  <script>
+  <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
     document.addEventListener('click', (e) => {
       const link = e.target.closest('.file-link');
