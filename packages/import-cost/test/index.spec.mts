@@ -1,23 +1,68 @@
 import { expect } from 'chai';
+import { spawn, spawnSync } from 'child_process';
 import type { EventEmitter } from 'events';
 import * as fs from 'fs';
+import { createRequire } from 'module';
 import * as os from 'os';
 import * as path from 'path';
 import type { ImportCostConfig, PackageInfo } from '../dist/index.js';
 import {
-  cacheFileName,
   cleanup,
   clearSizeCache,
   DebounceError,
   getPackages,
   importCostAsync,
   Lang,
+  packageName,
   importCost as runner,
   setCacheDir,
 } from '../dist/index.js';
 
+const FAST: ImportCostConfig = { maxCallTime: Infinity, debounceDelay: 0 };
+const { version } = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, '..', 'package.json'), 'utf8'),
+);
+const cacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ic-test-cache-'));
+const cacheFile = path.join(cacheDir, `ic-cache-${version}`);
+const cli = path.join(import.meta.dirname, '..', 'dist', 'cli.js');
+
 function fixture(fileName: string): string {
   return path.join(import.meta.dirname, 'fixtures', fileName);
+}
+
+function tempDir(prefix: string): string {
+  return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+function tempProject(): string {
+  const dir = tempDir('ic-proj-');
+  fs.writeFileSync(
+    path.join(dir, 'package.json'),
+    '{"name":"tmp","version":"1.0.0"}',
+  );
+  fs.cpSync(fixture('node_modules/chai'), path.join(dir, 'node_modules/chai'), {
+    recursive: true,
+  });
+  return dir;
+}
+
+function removeChaiCode(dir: string): void {
+  fs.rmSync(path.join(dir, 'node_modules/chai/index.js'));
+}
+
+async function measure(
+  dir: string,
+  source: string,
+  language: Lang = Lang.JAVASCRIPT,
+  config: ImportCostConfig = FAST,
+): Promise<PackageInfo> {
+  const [pkg] = await importCostAsync(
+    path.join(dir, 'a.js'),
+    source,
+    language,
+    config,
+  );
+  return pkg;
 }
 
 function whenDone(emitter: EventEmitter): Promise<PackageInfo[]> {
@@ -51,16 +96,11 @@ const LANGUAGES: Record<string, Lang> = {
 async function check(
   fileName: string,
   pkg?: string,
-  config: Partial<ImportCostConfig> = { concurrent: false },
+  config: ImportCostConfig = FAST,
 ): Promise<PackageInfo | undefined> {
   const language = LANGUAGES[fileName.split('.').pop()!];
   const content = fs.readFileSync(fixture(fileName), 'utf-8');
-  const emitter = runner(
-    fixture(fileName),
-    content,
-    language,
-    config as ImportCostConfig,
-  );
+  const emitter = runner(fixture(fileName), content, language, config);
   return (await whenDone(emitter)).find(x => x.name === pkg);
 }
 
@@ -77,17 +117,13 @@ async function verify(
   expect(gzip).to.be.within(size! * gzipLowBound, size! * gzipHighBound);
 }
 
-async function timed(fileName: string): Promise<number> {
-  const time = process.hrtime.bigint();
-  await verify(fileName);
-  return Math.round(Number(process.hrtime.bigint() - time) / 1e6);
-}
-
 describe('importCost', () => {
+  before(() => setCacheDir(cacheDir));
   beforeEach(() => clearSizeCache());
-  afterEach(() => {
-    clearSizeCache();
-    cleanup();
+  afterEach(() => clearSizeCache());
+  after(async () => {
+    await cleanup();
+    fs.rmSync(cacheDir, { recursive: true, force: true });
   });
 
   describe('imports', () => {
@@ -220,44 +256,120 @@ describe('importCost', () => {
   });
 
   describe('caching', () => {
-    const slow = async (x: string) =>
-      expect(await timed(x)).to.be.within(500, 2500);
-    const fast = async (x: string) =>
-      expect(await timed(x)).to.be.within(0, 100);
-
-    it('caches the results import string & version', async () => {
-      await slow('import.js');
-      await slow('import-specifiers.js');
-      await fast('import.js');
+    it('serves repeated imports from cache regardless of specifier order', async () => {
+      for (const language of [Lang.JAVASCRIPT, Lang.TYPESCRIPT]) {
+        const dir = tempProject();
+        const first = await measure(
+          dir,
+          `import { expect, assert } from 'chai';`,
+          language,
+        );
+        removeChaiCode(dir);
+        const again = await measure(
+          dir,
+          `import { assert, expect } from 'chai';`,
+          language,
+        );
+        expect(again.error).to.equal(undefined);
+        expect(again.size).to.equal(first.size);
+      }
     });
-    it('ignores order of javascript imports for caching purposes', async () => {
-      await slow('import-specifiers.js');
-      await fast('import-specifiers-reversed.js');
-      await slow('import-mixed.js');
-      await fast('import-mixed-reversed.js');
-    });
-    it('ignores order of typescript imports for caching purposes', async () => {
-      await slow('import-specifiers.ts');
-      await fast('import-specifiers-reversed.ts');
-      await slow('import-mixed.ts');
-      await fast('import-mixed-reversed.ts');
-    });
-    it('debounce any consecutive calculations of same import line', () => {
+    it('debounces consecutive calculations of the same import line', async () => {
       const line = (x: string) =>
-        whenDone(runner(fixture('import.js'), x, LANGUAGES.js));
-      return Promise.all([
-        expect(line('import "chai";')).to.be.rejectedWith(DebounceError),
-        expect(line('import "chai/index";')).to.be.fulfilled,
+        whenDone(
+          runner(fixture('import.js'), x, Lang.JAVASCRIPT, {
+            maxCallTime: Infinity,
+            debounceDelay: 1000,
+          }),
+        );
+      const first = line('import "chai";');
+      await new Promise(resolve => setTimeout(resolve, 200));
+      const second = line('import "chai/index";');
+      await Promise.all([
+        expect(first).to.be.rejectedWith(DebounceError),
+        expect(second).to.be.fulfilled,
       ]);
     });
-    it('caches everything to filesystem', async () => {
-      await slow('import.js');
+    it('persists results to disk and reloads them', async () => {
+      const dir = tempProject();
+      const first = await measure(dir, `import chai from 'chai';`);
+      const saved = fs.readFileSync(cacheFile);
       await clearSizeCache();
-      await slow('import.js');
-      fs.renameSync(cacheFileName, `${cacheFileName}.bak`);
-      await clearSizeCache();
-      fs.renameSync(`${cacheFileName}.bak`, cacheFileName);
-      await fast('import.ts');
+      fs.writeFileSync(cacheFile, saved);
+      removeChaiCode(dir);
+      const again = await measure(dir, `import chai from 'chai';`);
+      expect(again.size).to.equal(first.size);
+    });
+    it('keeps estimated sizes out of the disk cache', async () => {
+      await verify('import.js');
+      const pkg = (await check('failed-bundle.js', 'jest'))!;
+      expect(pkg.estimated).to.equal(true);
+      const disk = fs.readFileSync(cacheFile, 'utf8');
+      expect(disk).to.include("from 'chai'");
+      expect(disk).not.to.include("from 'jest'");
+    });
+    it('never writes the cache file concurrently', async () => {
+      const names = ['expect', 'assert', 'should', 'use', 'util', 'config'];
+      const source = names
+        .flatMap((a, i) =>
+          names.slice(i + 1).map(b => `import { ${a}, ${b} } from 'chai';`),
+        )
+        .join('\n');
+      const fsp = createRequire(import.meta.url)('fs/promises');
+      const writeFile = fsp.writeFile;
+      let writing = 0;
+      let peak = 0;
+      fsp.writeFile = async (file: string, ...rest: unknown[]) => {
+        if (!String(file).startsWith(cacheFile))
+          return writeFile(file, ...rest);
+        peak = Math.max(peak, ++writing);
+        try {
+          return await writeFile(file, ...rest);
+        } finally {
+          writing--;
+        }
+      };
+      let results: PackageInfo[];
+      try {
+        results = await importCostAsync(
+          fixture('import.js'),
+          source,
+          Lang.JAVASCRIPT,
+          FAST,
+        );
+      } finally {
+        fsp.writeFile = writeFile;
+      }
+      expect(results).to.have.length(15);
+      expect(peak).to.equal(1);
+      expect(
+        Object.keys(JSON.parse(fs.readFileSync(cacheFile, 'utf8'))),
+      ).to.have.length(15);
+    });
+    it('re-measures workspace packages instead of caching them', async () => {
+      const root = tempDir('ic-ws-');
+      const lib = path.join(root, 'packages', 'lib');
+      const app = path.join(root, 'app');
+      fs.mkdirSync(lib, { recursive: true });
+      fs.mkdirSync(path.join(app, 'node_modules'), { recursive: true });
+      fs.writeFileSync(
+        path.join(lib, 'package.json'),
+        '{"name":"lib","version":"0.0.0","main":"index.js"}',
+      );
+      fs.writeFileSync(path.join(lib, 'index.js'), 'export const a = 1;');
+      fs.writeFileSync(
+        path.join(app, 'package.json'),
+        '{"name":"app","version":"1.0.0"}',
+      );
+      fs.symlinkSync(lib, path.join(app, 'node_modules', 'lib'), 'junction');
+      const before = await measure(app, `import { a } from 'lib';`);
+      expect(before.local).to.equal(true);
+      fs.writeFileSync(
+        path.join(lib, 'index.js'),
+        `export const a = ${JSON.stringify('x'.repeat(2000))};`,
+      );
+      const after = await measure(app, `import { a } from 'lib';`);
+      expect(after.size).to.be.above(before.size! + 1000);
     });
   });
 
@@ -285,13 +397,52 @@ describe('importCost', () => {
     it('completes with empty array for unknown file type', async () => {
       expect(await check('import.flow', 'chai')).to.eql(undefined);
     });
-    it('should handle timeouts gracefully', async () => {
-      const pkg = await check('require.js', 'chai', { maxCallTime: 1 });
-      expect(pkg!.size).to.be.above(0);
+    it('reports timeouts as errors and does not cache them', async () => {
+      const dir = tempProject();
+      const slow = path.join(dir, 'node_modules', 'slow');
+      fs.mkdirSync(slow);
+      fs.writeFileSync(
+        path.join(slow, 'package.json'),
+        '{"name":"slow","version":"1.0.0","main":"index.js"}',
+      );
+      const modules = Array.from({ length: 400 }, (_, i) => `m${i}`);
+      for (const m of modules) {
+        fs.writeFileSync(path.join(slow, `${m}.js`), `export const ${m} = 1;`);
+      }
+      fs.writeFileSync(
+        path.join(slow, 'index.js'),
+        modules.map(m => `export * from './${m}.js';`).join('\n'),
+      );
+      const source = `import * as slow from 'slow';`;
+      const timedOut = await measure(dir, source, Lang.JAVASCRIPT, {
+        maxCallTime: 1,
+        debounceDelay: 0,
+      });
+      expect(timedOut.error?.name).to.equal('TimeoutError');
+      expect(timedOut.size).to.equal(0);
+      const real = await measure(dir, source);
+      expect(real.error).to.equal(undefined);
+      expect(real.estimated).to.not.equal(true);
+      expect(real.size).to.be.above(0);
+    });
+    it('terminates for relative file names outside any package', async () => {
+      const cwd = process.cwd();
+      process.chdir(tempDir('ic-nopkg-'));
+      try {
+        const result = await importCostAsync(
+          'Untitled-1',
+          `import x from 'definitely-not-installed';`,
+          Lang.JAVASCRIPT,
+          FAST,
+        );
+        expect(result).to.eql([]);
+      } finally {
+        process.chdir(cwd);
+      }
     });
   });
 
-  describe('multi-line imports', () => {
+  describe('parsing', () => {
     it('detects line number using offset for static imports', () => {
       const source = `import {\n  expect\n} from 'chai';\n`;
       const packages = getPackages(
@@ -325,19 +476,106 @@ describe('importCost', () => {
       expect(pkg).to.not.be.undefined;
       expect(pkg!.line).to.equal(3);
     });
+    it('keeps line numbers after import = require without a semicolon', () => {
+      const source = `import fs = require('fs')\n\nimport chai from 'chai';\n`;
+      const pkg = getPackages(
+        fixture('import.ts'),
+        source,
+        Lang.TYPESCRIPT,
+      ).find(p => p.name === 'chai');
+      expect(pkg?.line).to.equal(3);
+    });
+    it('ignores require() calls inside comments', () => {
+      const source = `// const a = require('chai')\n/* require('react') */\nconst b = require('react-dom');\n`;
+      const names = getPackages(
+        fixture('require.js'),
+        source,
+        Lang.JAVASCRIPT,
+      ).map(p => p.name);
+      expect(names).to.eql(['react-dom']);
+    });
+    it('keeps default+named imports when JSX forces the regex fallback', () => {
+      const source = `import React, { useState } from 'react';\nexport const A = () => <span>Due 12/31</span>;\n`;
+      const [pkg] = getPackages(fixture('import.js'), source, Lang.JAVASCRIPT);
+      expect(pkg?.name).to.equal('react');
+      expect(pkg.string).to.include('import React, {useState}');
+    });
+    it('reads every <script> block in vue and svelte files', () => {
+      const vue = `<script lang="ts">\nexport default {}\n</script>\n\n<script setup lang="ts">\nimport { expect } from 'chai';\n</script>\n`;
+      const svelte = `<script context="module">\nimport React from 'react';\n</script>\n<script>\nimport { expect } from 'chai';\n</script>\n`;
+      const lines = (source: string, file: string, language: Lang) =>
+        getPackages(fixture(file), source, language).map(p => [p.name, p.line]);
+      expect(lines(vue, 'vue.vue', Lang.VUE)).to.eql([['chai', 6]]);
+      expect(lines(svelte, 'svelte.svelte', Lang.SVELTE)).to.eql([
+        ['react', 2],
+        ['chai', 5],
+      ]);
+    });
+    it('extracts scope-aware package names', () => {
+      const names = [
+        'lodash',
+        'lodash/debounce',
+        '@scope/pkg',
+        '@scope/pkg/deep/path',
+      ].map(packageName);
+      expect(names).to.eql(['lodash', 'lodash', '@scope/pkg', '@scope/pkg']);
+    });
   });
 
-  describe('cache eviction', () => {
+  describe('bundling', () => {
+    it('measures react-dom subpaths instead of externalizing them', async () => {
+      const [pkg] = await importCostAsync(
+        fixture('import.js'),
+        `import { createRoot } from 'react-dom/client';`,
+        Lang.JAVASCRIPT,
+        FAST,
+      );
+      expect(pkg.name).to.equal('react-dom/client');
+      expect(pkg.size).to.be.above(1000);
+    });
+    it('drops inline type specifiers and skips all-type imports', async () => {
+      const results = await importCostAsync(
+        fixture('import.ts'),
+        `import { type Foo, expect } from 'chai';\nimport { type Bar } from 'react';\n`,
+        Lang.TYPESCRIPT,
+        FAST,
+      );
+      expect(results.map(p => p.name)).to.eql(['chai']);
+      expect(results[0].string).not.to.include('type');
+      expect(results[0].estimated).to.not.equal(true);
+    });
+    it('bundles { default as x } imports', async () => {
+      const [pkg] = await importCostAsync(
+        fixture('import.js'),
+        `import { default as chai } from 'chai';`,
+        Lang.JAVASCRIPT,
+        FAST,
+      );
+      expect(pkg.estimated).to.not.equal(true);
+      expect(pkg.size).to.be.above(0);
+    });
+    it('never resolves or bundles ignored packages', async () => {
+      const results = await importCostAsync(
+        fixture('import.js'),
+        `import chai from 'chai';\nimport React from 'react';\n`,
+        Lang.JAVASCRIPT,
+        { ...FAST, ignore: ['chai'] },
+      );
+      expect(results.map(p => p.name)).to.eql(['react']);
+    });
+  });
+
+  describe('cache directory', () => {
     it('persists cache to custom directory via setCacheDir', async () => {
-      const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ic-test-'));
+      const dir = tempDir('ic-test-');
       try {
-        setCacheDir(tmpDir);
+        setCacheDir(dir);
         await verify('import.js');
-        const files = fs.readdirSync(tmpDir);
+        const files = fs.readdirSync(dir);
         expect(files.some(f => f.startsWith('ic-cache-'))).to.be.true;
       } finally {
-        setCacheDir(os.tmpdir());
-        fs.rmSync(tmpDir, { recursive: true, force: true });
+        setCacheDir(cacheDir);
+        fs.rmSync(dir, { recursive: true, force: true });
       }
     });
   });
@@ -349,12 +587,76 @@ describe('importCost', () => {
         fixture('import.js'),
         content,
         Lang.JAVASCRIPT,
-        { maxCallTime: 30000, concurrent: true, debounceDelay: 0 },
+        { maxCallTime: 30000, debounceDelay: 0 },
       );
       const pkg = results.find(r => r.name === 'chai');
       expect(pkg).to.not.be.undefined;
       expect(pkg!.size).to.be.above(0);
       expect(pkg!.gzip).to.be.above(0);
+    });
+  });
+
+  describe('cli', () => {
+    const env = { ...process.env, TMPDIR: cacheDir };
+    const run = (args: string[]) =>
+      spawnSync(process.execPath, [cli, ...args], { encoding: 'utf8', env });
+
+    function cliProject(files: Record<string, string>): string {
+      const dir = tempDir('ic-cli-');
+      fs.writeFileSync(
+        path.join(dir, 'package.json'),
+        '{"name":"cli-test","version":"1.0.0"}',
+      );
+      fs.symlinkSync(
+        fixture('node_modules'),
+        path.join(dir, 'node_modules'),
+        'junction',
+      );
+      for (const [name, content] of Object.entries(files)) {
+        fs.writeFileSync(path.join(dir, name), content);
+      }
+      return dir;
+    }
+
+    it('rejects a malformed --budget instead of silently disabling it', () => {
+      for (const value of ['1KB', 'abc']) {
+        const result = run(['check', fixture('import.js'), '--budget', value]);
+        expect(result.status).to.equal(2);
+        expect(result.stderr).to.include('Invalid --budget');
+      }
+      expect(run(['check', fixture('import.js'), '--budget']).status).to.equal(
+        2,
+      );
+    });
+    it('writes complete JSON through a pipe', async () => {
+      const files: Record<string, string> = {};
+      for (let i = 0; i < 400; i++) {
+        files[`f${i}.js`] =
+          `import chai from 'chai';\nimport React from 'react';\n`;
+      }
+      const dir = cliProject(files);
+      const stdout = await new Promise<string>((resolve, reject) => {
+        const child = spawn(process.execPath, [cli, 'check', dir, '--json'], {
+          env,
+          stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        let out = '';
+        child.stdout.on('data', chunk => (out += chunk));
+        child.on('error', reject);
+        child.on('close', () => resolve(out));
+      });
+      expect(stdout.length).to.be.above(65536);
+      expect(JSON.parse(stdout)).to.have.length(800);
+    });
+    it('fails --strict runs that could not measure a file', () => {
+      const dir = cliProject({
+        'good.js': `import chai from 'chai';\n`,
+        'broken.js': `import chai from 'chai';\nconst x = {;\n`,
+      });
+      const lenient = run(['check', dir]);
+      expect(lenient.status).to.equal(0);
+      expect(lenient.stderr).to.include('Skipped');
+      expect(run(['check', dir, '--strict']).status).to.equal(1);
     });
   });
 });
