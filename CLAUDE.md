@@ -12,7 +12,7 @@ npm run lint               # Lint with Biome
 npm run lint:fix           # Auto-fix lint issues
 
 # import-cost core tests
-npm test -w import-cost
+npm test -w import-cost-core
 # Single test by grep pattern
 cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.mts 'test/*.spec.mts' --grep "pattern"
 
@@ -37,11 +37,11 @@ Pipeline: **parse** -> **resolve versions** -> **bundle & measure**
 
 1. **Parser** (`parser.ts` -> `js-parser.ts`): Extracts import/require statements from source code. Uses `es-module-lexer` for ESM imports, regex for CJS `require()` and TS `import = require()`. Has a regex fallback for JSX files that es-module-lexer can't parse. Vue/Svelte files get their `<script>` block extracted first.
 
-2. **Version resolution** (`utils.ts`): Finds package version and `sideEffects` field by walking up to find `node_modules`. Uses `require.resolve` first (handles pnpm/yarn PnP), falls back to manual directory traversal. Also resolves monorepo root for `nodePaths`.
+2. **Version resolution** (`utils.ts`): Finds package version and `sideEffects` field. Uses `require.resolve` first (handles pnpm and symlinks), falls back to walking up `node_modules` directories. Packages whose real path is outside `node_modules` (workspace/linked) are flagged `local`. Every upward walk must stop at the filesystem root (`dir === path.dirname(dir)`); relative paths such as untitled editor buffers previously looped forever.
 
-3. **Bundler** (`bundler.ts`): Bundles each import string with esbuild (minified, browser platform), then measures raw/gzip/brotli sizes. Peer dependencies are externalized. Node builtins and asset files (.css, .png, etc.) are stubbed empty. Falls back to reading the entry file size when bundling fails.
+3. **Bundler** (`bundler.ts`): Bundles each import string with esbuild (minified, browser platform), then measures raw/gzip/brotli sizes off the main thread (async zlib). Peer dependencies plus `react`/`react-dom` are externalized, except the imported package itself (compared by package root, so `react-dom/client` is measured). At most 4 builds run at once, and the esbuild service is stopped after 30 s idle because it keeps its peak heap resident. Node builtins and asset files (.css, .png, etc.) are stubbed empty. Falls back to reading the entry file size when bundling fails, but never on timeout (`TimeoutError`).
 
-4. **Caching** (`package-info.ts`): Size results are cached in-memory and persisted to `$TMPDIR/ic-cache-<version>`. Cache key is `importString#packageVersion`. Debouncing (`debounce-promise.ts`) prevents redundant calculations when the user types fast.
+4. **Caching** (`package-info.ts`): Size results are cached in-memory and persisted to `$TMPDIR/ic-cache-<version>` (the VS Code extension uses its global storage dir). Cache key is `importString#packageVersion`. Estimates and `local` packages are never persisted; disk writes are serialized and coalesced. Debouncing (`debounce-promise.ts`) is opt-in via `debounceDelay` (default `0`).
 
 ### `packages/vscode-import-cost` — VS Code extension
 

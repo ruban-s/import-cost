@@ -17,19 +17,19 @@ import { PrismaService } from './prisma.service';   // local imports skipped
 import type { StringValue } from 'ms';              // type imports skipped
 ```
 
-Hover for a detailed breakdown with compression ratios, tree-shake status, and lighter alternatives.
+Hover for a detailed breakdown with compression ratios, the package's `sideEffects` field, and lighter alternatives.
 
 ### Workspace-Aware Sharing
 
-The extension scans your entire workspace to track which packages are imported across multiple files. When a package is shared, the inline decoration tells you:
+The extension scans your workspace to track which packages are imported by other files in the same package (nearest `package.json`). Tests, stories and config files are not counted. When a package is shared, the inline decoration tells you:
 
 ```typescript
 import { debounce } from 'lodash';     72 KB (gzip: 25 KB) · shared 4 files
 import { Chart } from 'chart.js';      198 KB (gzip: 65 KB)
 ```
 
-- **`· shared N files`** — this package is already in your bundle from other files; marginal cost is ~0
-- **No tag** — unique to this file; full bundle cost applies
+- **`· shared N files`**: other files in this package import it too; if they ship in the same bundle, this import adds little
+- **No tag**: no other file in this package imports it
 
 Hover shows which other files import the same package.
 
@@ -37,7 +37,7 @@ The status bar reflects this too: `Σ 340 KB (45 KB unique)` — so you know how
 
 ### Package.json Cost View
 
-Open any `package.json` to see the bundle size of each dependency:
+Open any `package.json` to see the bundle size of each dependency (devDependencies too when `importCost.packageJsonDevDependencies` is on):
 
 ```json
 "dependencies": {
@@ -61,9 +61,9 @@ Hover over a heavy package to see a suggested replacement:
 
 > **Lighter alternative:** `dayjs`
 >
-> dayjs has the same API at ~2KB vs ~300KB
+> dayjs has a near-identical API at a fraction of the size
 
-16+ built-in suggestions including moment, lodash, axios, uuid, classnames, and more.
+Built-in suggestions for moment, lodash, axios, uuid, classnames, and more.
 
 ### Tree-Shake Hints
 
@@ -75,18 +75,20 @@ import * as lodash from 'lodash';  531 KB (gzip: 72 KB) — try named imports
 
 ### Code Actions
 
-Lightbulb quick-fixes on large imports:
+Lightbulb quick-fix on imports that have a lighter alternative: **Consider replacing with …** shows the suggested package and why.
 
-- **Convert to named import** — rewrites `import * as lodash` to `import { pick, map }` for packages over 50KB
-- **Suggest lighter alternative** — when a smaller replacement exists
+### Optimization Report
+
+**Import Cost: Optimization Report** (also a click on the status bar item) lists lighter alternatives, duplicate libraries for the same job, and large wildcard imports, with estimated savings and clickable file links.
 
 ### Smart Defaults
 
-- Skips relative imports (`./utils`) and type-only imports
-- Caches results by package + version — tab switching is instant
-- Color coded: green (small) → yellow (medium) → red (large)
+- Skips relative imports (`./utils`) and type-only imports (including all-`type` named imports)
+- Caches results by package + version in the extension's storage; workspace packages are re-measured
+- Color coded: green (small), amber (medium), red (large)
 - Debounced recalculation as you type
-- Works with npm, pnpm, yarn, and bun workspaces
+- Works with npm, pnpm, yarn (node_modules linker), and bun workspaces
+- The bundler process stops after 30 s idle to give memory back
 
 ## Configuration
 
@@ -98,12 +100,14 @@ Lightbulb quick-fixes on large imports:
 | `importCost.mediumPackageSize` | `100` | Upper KB limit for yellow |
 | `importCost.budgetKB` | `0` | Max allowed import size in KB (0 = disabled) |
 | `importCost.timeout` | `20000` | Calculation timeout in ms |
-| `importCost.ignoredPackages` | `[]` | Package names to skip |
+| `importCost.ignoredPackages` | `[]` | Package names or globs that are never resolved or bundled |
 | `importCost.workspaceAwareness` | `true` | Track imports across workspace for shared/unique detection |
 | `importCost.showWorkspaceSharing` | `true` | Show `· shared N files` tag on decorations |
+| `importCost.duplicateDetection` | `true` | Report duplicate libraries for the same job (e.g. two date libraries) |
+| `importCost.packageJsonDevDependencies` | `false` | Also measure devDependencies in the package.json view |
 | `importCost.showCalculatingDecoration` | `true` | Show "Calculating..." while computing |
-| `importCost.typescriptExtensions` | `["\\.tsx?$"]` | File extensions for TypeScript parser |
-| `importCost.javascriptExtensions` | `["\\.jsx?$"]` | File extensions for JavaScript parser |
+| `importCost.typescriptExtensions` | `["\\.[cm]?tsx?$"]` | File extensions for TypeScript parser |
+| `importCost.javascriptExtensions` | `["\\.[cm]?jsx?$"]` | File extensions for JavaScript parser |
 | `importCost.vueExtensions` | `["\\.vue$"]` | File extensions for Vue parser |
 | `importCost.svelteExtensions` | `["\\.svelte$"]` | File extensions for Svelte parser |
 
@@ -111,6 +115,7 @@ Lightbulb quick-fixes on large imports:
 
 - **Import Cost: Toggle** — enable or disable the extension
 - **Import Cost: Clear Cache** — clear cached sizes and recalculate
+- **Import Cost: Optimization Report** — ranked suggestions for reducing bundle size
 
 ## CLI
 

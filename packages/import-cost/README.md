@@ -11,8 +11,8 @@ Find heavy imports, enforce size budgets, and optimize your bundle. Works as a *
 - **Fast** — scans 50+ files/second, bundles in-process with esbuild
 - **Accurate** — shows minified, gzipped, and brotli sizes
 - **CI-ready** — `--budget` flag exits non-zero when imports exceed limits
-- **Tree-shake aware** — reports `sideEffects` status from package.json
-- **Zero config** — works with npm, pnpm, yarn, yarn PnP, and bun
+- **Tree-shake aware** — reports the `sideEffects` field from package.json
+- **Zero config** — works with npm, pnpm, yarn (node_modules linker), and bun. Yarn PnP is not supported.
 
 ## CLI
 
@@ -36,8 +36,11 @@ fast-import-cost check . --sort
 # Watch mode
 fast-import-cost check src/ --watch
 
-# Ignore packages
+# Ignore packages (never resolved or bundled)
 fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
+
+# Fail when a file or import cannot be measured
+fast-import-cost check src/ --budget 100 --strict
 
 # Compare between git refs
 fast-import-cost diff main
@@ -49,13 +52,19 @@ fast-import-cost diff main feature-branch
 ```
   Found 4 imports in 2 files
 
-  src/app.ts:1   @nestjs/common   91.88 KB (gzip: 24.56 KB, brotli: 20.12 KB) [tree-shakeable]
+  src/app.ts:1   @nestjs/common   91.88 KB (gzip: 24.56 KB, brotli: 20.12 KB) [sideEffects: false]
   src/app.ts:2   express          783.37 KB (gzip: 261.47 KB, brotli: 215.30 KB)
-  src/main.ts:1  rxjs             42.15 KB (gzip: 12.30 KB, brotli: 10.45 KB) [tree-shakeable]
+  src/main.ts:1  rxjs             42.15 KB (gzip: 12.30 KB, brotli: 10.45 KB) [sideEffects: false]
   src/main.ts:3  lodash           531 KB (gzip: 72 KB, brotli: 58 KB) ⚠ OVER BUDGET
 
   ⚠ 1 import(s) exceed the budget of 100 KB
 ```
+
+Sizes prefixed with `~` are estimates: bundling failed and the entry file size is shown instead. Files that cannot be parsed are reported on stderr; `--strict` turns them (and failed imports) into exit code 1.
+
+**Exit codes:** `0` success, `1` budget exceeded (or unmeasurable input with `--strict`), `2` invalid arguments such as `--budget 1KB`.
+
+`diff` measures both refs against the currently installed `node_modules`, so it reports import changes, not dependency version bumps.
 
 **Diff output:**
 
@@ -101,9 +110,11 @@ emitter.on('error', (e: Error) => {
 // stop listening on file change
 emitter.removeAllListeners();
 
-// clean up on shutdown
-cleanup();
+// stop the esbuild service on shutdown (it also stops itself after 30 s idle)
+await cleanup();
 ```
+
+`importCostAsync(fileName, fileContents, language, config)` returns the same results as a `Promise<PackageInfo[]>`.
 
 ### Parameters
 
@@ -112,7 +123,7 @@ cleanup();
 | `fileName` | `string` | Full path to the file. Needed to resolve `node_modules`. |
 | `fileContents` | `string` | File content (from editor buffer, may be unsaved). |
 | `language` | `Lang` | `Lang.JAVASCRIPT`, `Lang.TYPESCRIPT`, `Lang.VUE`, or `Lang.SVELTE` |
-| `config` | `ImportCostConfig` | Optional. `maxCallTime` (ms), `concurrent` (boolean). |
+| `config` | `ImportCostConfig` | Optional. `maxCallTime` (ms; a timeout is reported as an error, never cached), `debounceDelay` (ms, default `0`), `cacheDir`, `ignore` (package patterns that are never resolved or bundled). |
 
 ### PackageInfo
 
@@ -122,11 +133,12 @@ cleanup();
 | `size` | `number` | Minified size in bytes |
 | `gzip` | `number` | Gzipped size in bytes |
 | `brotli` | `number` | Brotli compressed size in bytes |
-| `sideEffects` | `boolean \| string[]` | `false` = tree-shakeable |
+| `sideEffects` | `boolean \| string[]` | The package.json `sideEffects` field |
 | `line` | `number` | Line number in source |
 | `version` | `string` | Resolved version (e.g. `lodash@4.17.21`) |
-| `estimated` | `boolean` | `true` if bundling failed, showing entry file size instead |
-| `error` | `Error` | Set if calculation failed |
+| `estimated` | `boolean` | `true` if bundling failed, showing entry file size instead (never persisted) |
+| `local` | `boolean` | `true` for workspace or linked packages outside `node_modules` (re-measured, never cached) |
+| `error` | `Error` | Set if calculation failed (for example a `TimeoutError`) |
 
 ### Events
 
@@ -147,8 +159,10 @@ cleanup();
 - `const x = require('pkg')`
 - `import('pkg')` (dynamic)
 - `import x = require('pkg')` (TypeScript)
+- `import { type A, b } from 'pkg'` (inline `type` specifiers are ignored; all-type imports are skipped)
+- `export { a } from 'pkg'` and `export * from 'pkg'`
 
-Supports **JavaScript**, **TypeScript**, **JSX**, **TSX**, **Vue**, and **Svelte**.
+Supports **JavaScript**, **TypeScript**, **JSX**, **TSX** (including `.mjs`, `.cjs`, `.mts`, `.cts`), **Vue**, and **Svelte**. Every `<script>` block of a Vue or Svelte file is scanned.
 
 ## Ignore List
 
@@ -161,7 +175,7 @@ firebase*
 @angular/*
 ```
 
-Glob patterns (`*`, `**`) and `#` comments supported. Picked up by both CLI and editor extensions.
+Glob patterns (`*`, `**`) and `#` comments supported. Picked up by both CLI and editor extensions. Ignored packages are never resolved or bundled.
 
 ## Credits
 

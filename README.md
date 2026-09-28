@@ -21,8 +21,8 @@ import express from 'express';         // 783 KB (gzip: 261 KB) — try named im
 ## Key Features
 
 - **Inline size decorations** — see the cost of every `import` and `require` as you type
-- **Workspace-aware sharing** — shows `· shared N files` when a package is imported across multiple files, so you know its marginal cost is ~0
-- **Package.json cost view** — open any `package.json` to see sizes for all dependencies
+- **Workspace-aware sharing** — shows `· shared N files` when other files in the same package import it too (tests, stories and configs excluded)
+- **Package.json cost view** — open any `package.json` to see sizes for its dependencies
 - **Size budgets** — set a max KB per import; violations show warnings in the editor and Problems panel
 - **Lighter alternatives** — hover tooltip suggests smaller replacements (moment → dayjs, lodash → lodash-es, etc.)
 - **Tree-shake hints** — suggests named imports when `import *` is used on large packages
@@ -32,7 +32,7 @@ import express from 'express';         // 783 KB (gzip: 261 KB) — try named im
 ## How It Works
 
 1. **Parse** — [es-module-lexer](https://github.com/nicolo-ribaudo/es-module-lexer) extracts all import/require statements (<1ms per file)
-2. **Resolve** — finds the installed package version via `require.resolve` (works with npm, pnpm, yarn, bun)
+2. **Resolve** — finds the installed package version via `require.resolve` (works with npm, pnpm, yarn with node_modules, bun)
 3. **Bundle** — [esbuild](https://esbuild.github.io/) bundles and minifies each import in-process
 4. **Measure** — calculates raw, gzip, and brotli sizes
 5. **Cache** — results are cached by package name + version, persisted to disk

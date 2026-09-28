@@ -20,7 +20,7 @@ npm run build      # builds all packages
 npm test           # runs tests across all packages
 ```
 
-Node 18+ is required.
+Node 22.18+ is required (build scripts and tests are `.mts` files run with Node's native type stripping).
 
 ## Building
 
@@ -34,7 +34,7 @@ npm run build -w import-cost-core
 cd packages/vscode-import-cost && npm run build
 
 # Extension JS only (no VSIX)
-cd packages/vscode-import-cost && node build.mjs
+cd packages/vscode-import-cost && node build.mts
 
 # coc.nvim extension
 npm run build -w coc-import-cost-fast
@@ -49,7 +49,7 @@ npm test                          # all workspaces
 npm test -w import-cost-core      # core only
 
 # Run a specific test by grep pattern
-cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.js 'test/**/*.spec.js' --grep "pattern"
+cd packages/import-cost && npx mocha -t 10000 test/mocha-setup.mts 'test/*.spec.mts' --grep "pattern"
 ```
 
 The `pretest` script compiles TypeScript before running tests.
@@ -71,7 +71,7 @@ Style rules:
 
 ## Pre-commit Hooks
 
-[Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) run Biome on staged `.js`, `.ts`, and `.mjs` files before every commit. If the hook fails, fix the issues with `npm run lint:fix` and re-stage.
+[Husky](https://typicode.github.io/husky/) + [lint-staged](https://github.com/lint-staged/lint-staged) run Biome on staged `.js`, `.ts`, `.mts`, `.cts`, and `.mjs` files before every commit. If the hook fails, fix the issues with `npm run lint:fix` and re-stage.
 
 ## Architecture
 
@@ -101,10 +101,10 @@ Results are cached in-memory and on disk at `$TMPDIR/ic-cache-<version>`.
 
 ### Pull requests
 
-1. Fork the repo and create a branch from `master`.
+1. Fork the repo and create a branch from `main`.
 2. Make your changes. Add or update tests if applicable.
 3. Ensure `npm test` and `npm run lint` pass.
-4. Open a PR against `master` with a clear description of what changed and why.
+4. Open a PR against `main` with a clear description of what changed and why.
 
 ## License
 

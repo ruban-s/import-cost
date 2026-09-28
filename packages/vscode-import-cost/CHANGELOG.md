@@ -4,6 +4,23 @@
 
 - Add **optimization report** — new command opens a webview panel with ranked bundle savings, clickable file links, and potential KB savings
 - Add **duplicate capability detection** — warns when project uses multiple packages for the same purpose (e.g. moment + dayjs)
+- Fix **platform builds**: every VSIX is now platform-targeted with the matching esbuild binary (the published universal package only worked on Apple Silicon; elsewhere every size fell back to a grey `~` estimate), and a missing binary fails the build
+- Fix **CPU loop on untitled buffers**: bare imports in an unsaved buffer no longer spin forever; untitled buffers are measured only inside a workspace folder, and git diff sides and notebook cells are no longer decorated as the working file
+- Fix **Toggle**: off/on/off no longer throws `illegal state - object is disposed`, and diagnostics keep working after re-enabling
+- Fix **React subpaths**: `react-dom/client` and `react/jsx-runtime` show their real size instead of ~300 B
+- Fix **JSX/TSX parsing**: `import React, { useState } from 'react'` is no longer dropped when the file trips the lexer
+- Fix **package.json view**: sizes sit on the dependency's own line (not `keywords` or `peerDependencies`); devDependencies are skipped unless `importCost.packageJsonDevDependencies` is on
+- Fix **ignored packages** are never resolved or bundled; `.importcostignore` is read from the file's own workspace folder
+- Fix **hovers**: icons render, the markdown is no longer trusted, and the `sideEffects` row reports the field accurately instead of guessing tree-shakeability
+- Fix **timeouts** show as errors instead of a permanently cached estimate; estimates and workspace packages are never cached to disk
+- Remove **Convert to named import** (it produced code that did not compile) and the no-op budget quick fix
+- **Duplicate detection** no longer flags companion packages (@emotion/react + @emotion/styled, moment + moment-timezone, redux + @reduxjs/toolkit, framer-motion + motion, react-spring + @react-spring/web), reports once per file and package, and can be turned off with `importCost.duplicateDetection`
+- **Optimization report**: no false suggestions for deep imports like `lodash/pick`, no double-counted savings, savings labelled as estimates, accurate file counts, complete results when opened during the initial scan, and a CSP-locked webview
+- **Workspace sharing** counts only files in the same package and ignores tests, stories and config files; the hover no longer claims a ~0 KB marginal cost unconditionally
+- **Status bar** opens the optimization report (it used to clear the cache) and hides on unsupported files
+- `.mts`, `.cts`, `.mjs` and `.cjs` files are supported by default; the default medium colour is now amber
+- Size cache moved from shared `/tmp` to the extension's global storage
+- **Memory**: the esbuild service stops after 30 s idle (it kept ~250 MB resident), at most 4 builds run at once, and compression runs off the extension host thread
 
 ## 5.7.0
 
@@ -42,7 +59,7 @@
 
 - Add **diagnostic warnings** — over-budget imports appear in the Problems panel with yellow squiggles
 - Add **side effects badge** — hover shows `Tree-shakeable: Yes/No/Partial` based on package's `sideEffects` field
-- Add **CLI mode** — `npx fast-import-cost check src/ --budget 100` for CI pipelines, supports `--json` and `--sort`
+- Add **CLI mode** — `npx import-cost-core check src/ --budget 100` for CI pipelines, supports `--json` and `--sort`
 
 ## 5.3.1
 

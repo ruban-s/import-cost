@@ -2,14 +2,37 @@
 
 All notable changes to this project will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
-## [5.8.0] - 2026-05-14
+## [5.8.0] - 2026-09-28
 
 ### Added
 
 - **Optimization report** — new command `Import Cost: Optimization Report` opens a webview panel with ranked bundle savings: lighter alternatives, duplicate packages, wildcard import conversions. Click any file link to jump to the import.
 - **Duplicate capability detection** — warns when the project uses multiple packages for the same purpose (e.g. two date libraries, two HTTP clients). Covers 10 categories.
+
+### Fixed
+
+- Opening an untitled JS/TS buffer with a bare import no longer pins a CPU core in an endless `fs.stat` loop (package directory lookup now stops at the filesystem root)
+- `react-dom/client`, `react/jsx-runtime` and other subpaths of the default externals are measured instead of reported as ~300 B
+- JSX/TSX files that trip the lexer keep `import React, { useState } from 'react'` style imports
+- Inline `type` specifiers and `{ default as x }` no longer produce invalid bundles (and grey estimates); all-type imports are skipped
+- Every `<script>` block in Vue and Svelte files is scanned (`<script setup>`, `context="module"`)
+- Line numbers stay correct after `import x = require('x')` without a semicolon; `require()` inside comments is ignored
+- A timeout is reported as an error instead of a cached entry-file estimate; estimates are never written to the disk cache
+- Concurrent cache writes no longer corrupt the cache file
+- Workspace and linked packages are re-measured instead of cached forever at their fixed version
+- Ignored packages are never resolved or bundled (`config.ignore`, `.importcostignore`, `--ignore`)
+- CLI: `--json` output is no longer truncated at 64 KB when piped; malformed `--budget`/`--ignore` values and unknown flags exit 2 instead of silently disabling the budget; unmeasurable files and failed imports are reported, and `--strict` fails on them; estimates are marked `~` in text and `estimated` in JSON; `diff` resolves paths from the repository root
+- coc.nvim: the published package now installs `import-cost-core` from npm instead of a dangling `file:` link
+
+### Changed
+
+- The esbuild service stops after 30 s idle (it kept ~250 MB resident), at most 4 builds run at once, and gzip/brotli run off the main thread
+- `debounceDelay` defaults to `0`; `concurrent` is optional and unused
+- `cleanup()` now stops the esbuild service and returns a promise
+- New exports: `packageName`, `pkgDir`, `ALTERNATIVES`; new `PackageInfo.local`
+- `.mjs`, `.cjs`, `.mts` and `.cts` files are scanned by the CLI
+- Outdated lighter-alternative advice removed (`date-fns`, `rxjs`, `react-icons`)
+- Yarn PnP is documented as unsupported (it was listed as supported but imports were silently dropped)
 
 ## [5.7.0] - 2026-05-14
 
@@ -54,7 +77,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Diagnostic warnings for over-budget imports in the VS Code Problems panel
 - Side effects badge showing tree-shakeability in hover tooltip
-- CLI mode (`npx fast-import-cost check src/ --budget 100`) with `--json` and `--sort` support
+- CLI mode (`npx import-cost-core check src/ --budget 100`) with `--json` and `--sort` support
 
 ## [5.3.1]
 

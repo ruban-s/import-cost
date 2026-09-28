@@ -6,14 +6,14 @@
 # 1. Ensure clean working tree
 git status
 
-# 2. Run full test suite
+# 2. Run the full test suite (core, extension, coc build)
 npm test -w import-cost-core
+npm run typecheck -w fast-import-cost
+npm test -w fast-import-cost
+npm run build -w coc-import-cost-fast
 
-# 3. Typecheck extension
-cd packages/vscode-import-cost && npm run typecheck && cd ../..
-
-# 4. Lint
-npx @biomejs/biome check packages/
+# 3. Lint
+npm run lint
 ```
 
 ## Version Bump
@@ -28,11 +28,11 @@ npm version $VERSION -w import-cost-core --no-git-tag-version
 # VS Code extension
 npm version $VERSION -w fast-import-cost --no-git-tag-version
 
-# coc.nvim (follows its own versioning)
+# coc.nvim (follows its own versioning; keep its import-cost-core range at ^$VERSION)
 # npm version 3.7.0 -w coc-import-cost-fast --no-git-tag-version
 
 # Commit version bump
-git add packages/*/package.json
+git add packages/*/package.json package-lock.json
 git commit -m "chore: bump to $VERSION"
 git tag "v$VERSION"
 ```
@@ -43,25 +43,25 @@ git tag "v$VERSION"
 # Build core library
 npm run build -w import-cost-core
 
-# Build VS Code extension (universal VSIX)
-cd packages/vscode-import-cost
-npm run build
-# Output: fast-import-cost-$VERSION.vsix
-cd ../..
-
-# Build platform-specific VSIX (optional, ~5x smaller per platform)
+# Build one VSIX per platform (fetches each @esbuild/<platform> binary; fails if any is missing)
 cd packages/vscode-import-cost
 npm run build:platform
-# Output: fast-import-cost-$VERSION@<platform>.vsix for each platform
+# Output: fast-import-cost-<platform>-$VERSION.vsix for each platform
 cd ../..
 ```
 
+Never publish a VSIX built with plain `vsce package`: it only contains the esbuild binary of the machine that built it, so every other platform silently falls back to estimated sizes.
+
 ## Publish
 
-### npm (core library)
+### npm (core first: coc depends on it)
 
 ```sh
 cd packages/import-cost
+npm publish
+cd ../..
+
+cd packages/coc-import-cost
 npm publish
 cd ../..
 ```
@@ -70,33 +70,24 @@ cd ../..
 
 ```sh
 cd packages/vscode-import-cost
-npx @vscode/vsce publish
-cd ../..
-```
-
-### coc.nvim (npm)
-
-```sh
-cd packages/coc-import-cost
-npm publish
+for f in fast-import-cost-*-$VERSION.vsix; do npx @vscode/vsce publish --packagePath "$f"; done
 cd ../..
 ```
 
 ### GitHub
 
 ```sh
-git push origin master --tags
+git push origin main --tags
 
-# Create GitHub release
 gh release create "v$VERSION" \
-  packages/vscode-import-cost/fast-import-cost-*.vsix \
+  packages/vscode-import-cost/fast-import-cost-*-$VERSION.vsix \
   --title "v$VERSION" \
-  --notes-file CHANGELOG.md
+  --generate-notes
 ```
 
 ## Post-release
 
 - [ ] Verify npm: `npm info import-cost-core version`
-- [ ] Verify VS Code Marketplace: search "Import Cost Fast" in extensions
-- [ ] Verify VSIX installs: `code --install-extension fast-import-cost-$VERSION.vsix`
+- [ ] Verify coc install: `npm install coc-import-cost-fast` in a scratch dir resolves `import-cost-core` from npm
+- [ ] Verify VS Code Marketplace: `npx @vscode/vsce show ruban-s.fast-import-cost` lists every platform target
 - [ ] Update CHANGELOG.md with release date
