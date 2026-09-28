@@ -42,6 +42,9 @@ fast-import-cost check src/ --ignore "lodash,moment,@angular/*"
 # Fail when a file or import cannot be measured
 fast-import-cost check src/ --budget 100 --strict
 
+# Budget the gzip (or brotli) size instead of the minified size
+fast-import-cost check src/ --budget 30 --budget-metric gzip
+
 # Compare between git refs
 fast-import-cost diff main
 fast-import-cost diff main feature-branch

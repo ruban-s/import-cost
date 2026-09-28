@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Budgets can apply to the gzip or brotli size: `--budget-metric gzip|brotli` in the CLI, `importCost.budgetMetric` in VS Code
+
+### Changed
+
+- Imports from the same package are bundled in one esbuild build, so shared files are parsed once (an 18-import React file: 307 ms to 222 ms cold, peak esbuild memory 218 MB to 170 MB); if one entry fails, the others are measured alone
+- VS Code: changing any `importCost.*` setting refreshes visible files immediately instead of on the next edit
+
 ## [5.8.0] - 2026-09-28
 
 ### Added

@@ -1,5 +1,11 @@
 # Changes
 
+## Unreleased
+
+- Add **`importCost.budgetMetric`**: apply `budgetKB` to the minified, gzip or brotli size
+- Settings changes apply to open files immediately, no edit needed
+- Faster, leaner first calculation: imports from the same package share one esbuild build (18-import React file: 307 ms to 222 ms, peak memory 218 MB to 170 MB)
+
 ## 5.8.0
 
 - Add **optimization report** — new command opens a webview panel with ranked bundle savings, clickable file links, and potential KB savings

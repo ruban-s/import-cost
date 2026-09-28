@@ -49,7 +49,7 @@ Open any `package.json` to see the bundle size of each dependency (devDependenci
 
 ### Size Budgets
 
-Set `importCost.budgetKB` to a max KB per import. Violations get a warning icon, red color, and appear in the Problems panel:
+Set `importCost.budgetKB` to a max KB per import, and `importCost.budgetMetric` to `minified` (default), `gzip` or `brotli` to choose which size it applies to. Violations get a warning icon, red color, and appear in the Problems panel:
 
 ```typescript
 import * as lodash from 'lodash';  ⚠ 531 KB (gzip: 72 KB) — over budget!
@@ -99,6 +99,7 @@ Lightbulb quick-fix on imports that have a lighter alternative: **Consider repla
 | `importCost.smallPackageSize` | `50` | Upper KB limit for green |
 | `importCost.mediumPackageSize` | `100` | Upper KB limit for yellow |
 | `importCost.budgetKB` | `0` | Max allowed import size in KB (0 = disabled) |
+| `importCost.budgetMetric` | `minified` | Size the budget applies to: `minified`, `gzip` or `brotli` |
 | `importCost.timeout` | `20000` | Calculation timeout in ms |
 | `importCost.ignoredPackages` | `[]` | Package names or globs that are never resolved or bundled |
 | `importCost.workspaceAwareness` | `true` | Track imports across workspace for shared/unique detection |
