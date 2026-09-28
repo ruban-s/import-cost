@@ -1,27 +1,32 @@
 import { execFileSync } from 'child_process';
 
 const PLATFORMS = [
-  { target: 'darwin-arm64', vsceTarget: 'darwin-arm64' },
-  { target: 'darwin-x64', vsceTarget: 'darwin-x64' },
-  { target: 'linux-x64', vsceTarget: 'linux-x64' },
-  { target: 'linux-arm64', vsceTarget: 'linux-arm64' },
-  { target: 'win32-x64', vsceTarget: 'win32-x64' },
-  { target: 'win32-arm64', vsceTarget: 'win32-arm64' },
+  'darwin-arm64',
+  'darwin-x64',
+  'linux-x64',
+  'linux-arm64',
+  'win32-x64',
+  'win32-arm64',
 ];
 
 const requested = process.argv[2];
-const targets = requested
-  ? PLATFORMS.filter(p => p.target === requested)
-  : PLATFORMS;
+const host = `${process.platform}-${process.arch}`;
+const targets =
+  requested === 'host'
+    ? [host]
+    : requested
+      ? PLATFORMS.filter(p => p === requested)
+      : PLATFORMS;
 
-if (targets.length === 0) {
+if (targets.length === 0 || !targets.every(t => PLATFORMS.includes(t))) {
   console.error(
-    `Unknown platform: ${requested}\nAvailable: ${PLATFORMS.map(p => p.target).join(', ')}`,
+    `Unknown platform: ${requested === 'host' ? host : requested}\nAvailable: host, ${PLATFORMS.join(', ')}`,
   );
   process.exit(1);
 }
 
-for (const { target, vsceTarget } of targets) {
+const failed: string[] = [];
+for (const target of targets) {
   console.log(`\nBuilding for ${target}...`);
   try {
     execFileSync('node', ['build.mts', `--target=${target}`], {
@@ -29,13 +34,19 @@ for (const { target, vsceTarget } of targets) {
     });
     execFileSync(
       'npx',
-      ['@vscode/vsce', 'package', '--no-dependencies', '--target', vsceTarget],
-      { stdio: 'inherit' },
+      ['@vscode/vsce', 'package', '--no-dependencies', '--target', target],
+      { stdio: 'inherit', shell: process.platform === 'win32' },
     );
     console.log(`Done: ${target}`);
   } catch (e) {
+    failed.push(target);
     console.error(
       `Failed: ${target} — ${e instanceof Error ? e.message : String(e)}`,
     );
   }
+}
+
+if (failed.length > 0) {
+  console.error(`\nFailed targets: ${failed.join(', ')}`);
+  process.exit(1);
 }

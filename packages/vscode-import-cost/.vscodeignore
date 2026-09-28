@@ -1,9 +1,14 @@
 .vscode/**
 .vscode-test/**
+.vscode-test-web/**
 test/**
 src/**
 out/**
 node_modules/**
+**/*.map
 *.mts
+*.vsix
 tsconfig.json
 .gitignore
+.DS_Store
+images/import-cost-logo-512.png

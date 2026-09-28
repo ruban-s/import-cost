@@ -1,14 +1,17 @@
+import { execFileSync } from 'child_process';
 import * as esbuild from 'esbuild';
 import {
   cpSync,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   rmSync,
   statSync,
 } from 'fs';
 import { createRequire } from 'module';
+import { tmpdir } from 'os';
 import { dirname, extname, join } from 'path';
 
 const require = createRequire(import.meta.url);
@@ -23,7 +26,14 @@ const PLATFORM_MAP: Record<string, string> = {
 };
 
 const targetArg = process.argv.find(a => a.startsWith('--target='));
-const target = targetArg ? targetArg.split('=')[1] : null;
+const target = targetArg
+  ? targetArg.split('=')[1]
+  : `${process.platform}-${process.arch}`;
+if (!PLATFORM_MAP[target]) {
+  throw new Error(
+    `Unsupported target: ${target} (expected one of ${Object.keys(PLATFORM_MAP).join(', ')})`,
+  );
+}
 
 await esbuild.build({
   entryPoints: ['src/extension.ts'],
@@ -117,8 +127,39 @@ function copyModuleEssentials(name: string, { skipBin = false } = {}): void {
   copyDir(modPath, dest);
 }
 
-function copyNativeBinaryOnly(name: string): void {
-  const modPath = dirname(require.resolve(`${name}/package.json`));
+function findInstalledPackage(name: string): string | null {
+  try {
+    return dirname(require.resolve(`${name}/package.json`));
+  } catch {
+    return null;
+  }
+}
+
+function fetchPackage(name: string, version: string): string {
+  const dir = mkdtempSync(join(tmpdir(), 'esbuild-binary-'));
+  execFileSync(
+    'npm',
+    ['pack', `${name}@${version}`, '--pack-destination', dir, '--silent'],
+    {
+      stdio: ['ignore', 'ignore', 'inherit'],
+      shell: process.platform === 'win32',
+    },
+  );
+  const tarball = readdirSync(dir).find(f => f.endsWith('.tgz'));
+  if (!tarball) throw new Error(`npm pack produced no tarball for ${name}`);
+  execFileSync('tar', ['-xzf', join(dir, tarball), '-C', dir]);
+  return join(dir, 'package');
+}
+
+function copyNativeBinaryOnly(name: string, version: string): void {
+  let modPath = findInstalledPackage(name);
+  if (
+    !modPath ||
+    JSON.parse(readFileSync(join(modPath, 'package.json'), 'utf8')).version !==
+      version
+  ) {
+    modPath = fetchPackage(name, version);
+  }
   const dest = join(distModules, name);
   mkdirSync(dest, { recursive: true });
 
@@ -146,30 +187,18 @@ function copyNativeBinaryOnly(name: string): void {
 // Copy esbuild JS wrapper (skip bin/ — platform pkg provides the binary)
 copyModuleEssentials('esbuild', { skipBin: true });
 
-if (target && PLATFORM_MAP[target]) {
-  // Copy only the target platform binary
-  try {
-    copyNativeBinaryOnly(PLATFORM_MAP[target]);
-  } catch {
-    console.warn(`Warning: ${PLATFORM_MAP[target]} not installed, skipping`);
-  }
-} else {
-  // No target: copy current platform's binaries
-  const esbuildPkg = JSON.parse(
-    readFileSync(require.resolve('esbuild/package.json'), 'utf8'),
-  );
-  if (esbuildPkg.optionalDependencies) {
-    for (const dep of Object.keys(esbuildPkg.optionalDependencies)) {
-      try {
-        copyNativeBinaryOnly(dep);
-      } catch {
-        // Not installed on this platform
-      }
-    }
-  }
+const { version: esbuildVersion } = JSON.parse(
+  readFileSync(require.resolve('esbuild/package.json'), 'utf8'),
+);
+copyNativeBinaryOnly(PLATFORM_MAP[target], esbuildVersion);
+
+const binary = join(
+  distModules,
+  PLATFORM_MAP[target],
+  target.startsWith('win32') ? 'esbuild.exe' : 'bin/esbuild',
+);
+if (!existsSync(binary)) {
+  throw new Error(`esbuild binary missing for ${target}: ${binary}`);
 }
 
-console.log(`Build complete. Native modules in ${distModules}/`);
-if (target) {
-  console.log(`Target platform: ${target}`);
-}
+console.log(`Build complete for ${target}. Native modules in ${distModules}/`);
