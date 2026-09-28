@@ -1,30 +1,35 @@
 import * as esbuild from 'esbuild';
-import * as fs from 'fs';
+import * as fs from 'fs/promises';
 import * as path from 'path';
-import { brotliCompressSync, constants, gzipSync } from 'zlib';
+import { promisify } from 'util';
+import { brotliCompress, constants, gzip } from 'zlib';
 import type { ImportCostConfig, PackageInfo, SizeResult } from './types';
-import { getAllNodeModulePaths, getPackageJson, pkgDir } from './utils';
+import { getPackageJson, packageName, pkgDir } from './utils';
 
+const gzipAsync = promisify(gzip);
+const brotliAsync = promisify(brotliCompress);
 const nodeBuiltins = new Set(require('module').builtinModules);
 
-// Cache resolved project dirs and node paths per file directory
-const projectDirCache = new Map<string, string | undefined>();
-const nodePathsCache = new Map<string, string[]>();
+const MAX_CONCURRENT_BUILDS = 4;
+const IDLE_STOP_MS = 30_000;
 
-async function getProjectDir(fileName: string): Promise<string | undefined> {
-  const dir = path.dirname(fileName);
-  if (!projectDirCache.has(dir)) {
-    projectDirCache.set(dir, await pkgDir(dir));
+export class TimeoutError extends Error {
+  constructor(ms: number) {
+    super(`Bundling timed out after ${ms} ms`);
+    this.name = 'TimeoutError';
   }
-  return projectDirCache.get(dir);
 }
 
-async function getNodePaths(fileName: string): Promise<string[]> {
+const projectDirCache = new Map<string, Promise<string | undefined>>();
+
+function getProjectDir(fileName: string): Promise<string | undefined> {
   const dir = path.dirname(fileName);
-  if (!nodePathsCache.has(dir)) {
-    nodePathsCache.set(dir, await getAllNodeModulePaths(fileName));
+  let projectDir = projectDirCache.get(dir);
+  if (!projectDir) {
+    projectDir = pkgDir(dir);
+    projectDirCache.set(dir, projectDir);
   }
-  return nodePathsCache.get(dir)!;
+  return projectDir;
 }
 
 const loaders: Record<string, esbuild.Loader> = {
@@ -59,94 +64,116 @@ const ignoreUnresolvedPlugin: esbuild.Plugin = {
   },
 };
 
-export async function calcSize(
-  packageInfo: PackageInfo,
-  config: ImportCostConfig,
-  callback: (error: Error | null, result?: SizeResult) => void,
-): Promise<void> {
+let runningBuilds = 0;
+const waitingBuilds: (() => void)[] = [];
+let idleTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function withBuildSlot<T>(fn: () => Promise<T>): Promise<T> {
+  clearTimeout(idleTimer);
+  if (runningBuilds >= MAX_CONCURRENT_BUILDS) {
+    await new Promise<void>(resolve => waitingBuilds.push(resolve));
+  }
+  runningBuilds++;
   try {
-    const projectDir = await getProjectDir(packageInfo.fileName);
-    const allNodePaths = await getNodePaths(packageInfo.fileName);
-
-    let externals = ['react', 'react-dom'];
-    try {
-      const pkgJson = await getPackageJson(packageInfo);
-      externals = Object.keys(pkgJson.peerDependencies || {})
-        .concat(externals)
-        .filter(p => p !== packageInfo.name);
-    } catch {
-      // package.json not found — use default externals
+    return await fn();
+  } finally {
+    runningBuilds--;
+    const next = waitingBuilds.shift();
+    if (next) next();
+    else if (runningBuilds === 0) {
+      // the esbuild service keeps its peak heap resident until stopped
+      idleTimer = setTimeout(() => void esbuild.stop(), IDLE_STOP_MS);
+      idleTimer.unref();
     }
-
-    const buildPromise = esbuild.build({
-      stdin: {
-        contents: packageInfo.string,
-        resolveDir: projectDir,
-        loader: 'js',
-      },
-      bundle: true,
-      minify: true,
-      write: false,
-      platform: 'browser',
-      define: { 'process.env.NODE_ENV': '"production"' },
-      external: externals,
-      nodePaths: allNodePaths,
-      mainFields: ['browser', 'module', 'main'],
-      loader: loaders,
-      logLevel: 'silent',
-      plugins: [ignoreUnresolvedPlugin],
-    });
-
-    let result: esbuild.BuildResult;
-    if (config.maxCallTime && config.maxCallTime !== Infinity) {
-      const timeout = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('TimeoutError')), config.maxCallTime),
-      );
-      result = await Promise.race([buildPromise, timeout]);
-    } else {
-      result = await buildPromise;
-    }
-
-    const output = Buffer.concat(
-      result.outputFiles!.map(f => Buffer.from(f.contents)),
-    );
-    const size = output.length;
-    const gzip = gzipSync(output).length;
-    const brotli = brotliCompressSync(output, {
-      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
-    }).length;
-    callback(null, { size, gzip, brotli });
-  } catch (e) {
-    try {
-      const fallback = estimatePackageSize(packageInfo);
-      if (fallback) {
-        callback(null, { ...fallback, estimated: true });
-        return;
-      }
-    } catch {
-      // ignore fallback errors
-    }
-    callback(e as Error);
   }
 }
 
-function estimatePackageSize(packageInfo: PackageInfo): SizeResult | null {
-  const pkgName = packageInfo.name
-    .split('/')
-    .slice(0, packageInfo.name.startsWith('@') ? 2 : 1)
-    .join('/');
+export async function cleanup(): Promise<void> {
+  clearTimeout(idleTimer);
+  await esbuild.stop();
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  if (!ms || ms === Infinity) return promise;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new TimeoutError(ms)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+async function bundle(
+  packageInfo: PackageInfo,
+  config: ImportCostConfig,
+): Promise<Uint8Array> {
+  const pkg = packageName(packageInfo.name);
+  let peers: string[] = [];
   try {
-    const resolved = require.resolve(pkgName, {
-      paths: [path.dirname(packageInfo.fileName)],
-    });
-    const content = fs.readFileSync(resolved);
-    const size = content.length;
-    const gzip = gzipSync(content).length;
-    const brotli = brotliCompressSync(content, {
-      params: { [constants.BROTLI_PARAM_QUALITY]: 4 },
-    }).length;
-    return { size, gzip, brotli };
+    peers = Object.keys(
+      (await getPackageJson(packageInfo)).peerDependencies ?? {},
+    );
   } catch {
-    return null;
+    // unreadable package.json: measure without its peers
   }
+  const build = esbuild.build({
+    stdin: {
+      contents: packageInfo.string,
+      resolveDir: await getProjectDir(packageInfo.fileName),
+      loader: 'js',
+    },
+    bundle: true,
+    minify: true,
+    write: false,
+    platform: 'browser',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    external: [...peers, 'react', 'react-dom'].filter(p => p !== pkg),
+    mainFields: ['browser', 'module', 'main'],
+    loader: loaders,
+    logLevel: 'silent',
+    plugins: [ignoreUnresolvedPlugin],
+  });
+  const result = await withTimeout(build, config.maxCallTime);
+  const output = result.outputFiles?.[0];
+  if (!output) throw new Error('esbuild produced no output');
+  return output.contents;
+}
+
+async function measure(output: Uint8Array): Promise<SizeResult> {
+  const [gzipped, brotli] = await Promise.all([
+    gzipAsync(output),
+    brotliAsync(output, { params: { [constants.BROTLI_PARAM_QUALITY]: 4 } }),
+  ]);
+  return { size: output.length, gzip: gzipped.length, brotli: brotli.length };
+}
+
+async function estimatePackageSize(
+  packageInfo: PackageInfo,
+): Promise<SizeResult | null> {
+  const paths = [path.dirname(packageInfo.fileName)];
+  for (const request of [packageInfo.name, packageName(packageInfo.name)]) {
+    try {
+      return await measure(
+        await fs.readFile(require.resolve(request, { paths })),
+      );
+    } catch {
+      // try the package root next
+    }
+  }
+  return null;
+}
+
+export async function calcSize(
+  packageInfo: PackageInfo,
+  config: ImportCostConfig,
+): Promise<SizeResult> {
+  let output: Uint8Array;
+  try {
+    output = await withBuildSlot(() => bundle(packageInfo, config));
+  } catch (e) {
+    if (e instanceof TimeoutError) throw e;
+    const estimate = await estimatePackageSize(packageInfo);
+    if (!estimate) throw e;
+    return { ...estimate, estimated: true };
+  }
+  return measure(output);
 }

@@ -15,6 +15,9 @@ interface CacheEntry extends SizeResult {
 
 let sizeCache: Record<string, CacheEntry | Promise<SizeResult>> = {};
 let activeCacheDir: string | null = null;
+let loading: Promise<void> | null = null;
+let saving: Promise<void> | null = null;
+let dirty = false;
 
 function getCacheFilePath(config?: ImportCostConfig): string {
   const dir = config?.cacheDir || activeCacheDir || os.tmpdir();
@@ -25,29 +28,35 @@ export const cacheFileName = path.join(os.tmpdir(), `ic-cache-${icVersion}`);
 
 export function setCacheDir(dir: string): void {
   activeCacheDir = dir;
+  loading = null;
 }
 
 export async function getSize(
   pkg: PackageInfo,
   config: ImportCostConfig,
 ): Promise<PackageInfo> {
+  const cacheable = !pkg.local;
   const key = `${pkg.string}#${pkg.version}`;
-  await readSizeCache(config);
-  if (sizeCache[key] === undefined || sizeCache[key] instanceof Promise) {
+  if (cacheable) await readSizeCache(config);
+  let entry = cacheable ? sizeCache[key] : undefined;
+  if (entry === undefined || entry instanceof Promise) {
+    const pending = entry ?? calcPackageSize(pkg, config);
+    if (cacheable) sizeCache[key] = pending;
     try {
-      sizeCache[key] = sizeCache[key] || calcPackageSize(pkg, config);
-      const result = await (sizeCache[key] as Promise<SizeResult>);
-      sizeCache[key] = { ...result, lastUsed: Date.now() };
-      await saveSizeCache(config);
+      const result = await pending;
+      entry = { ...result, lastUsed: Date.now() };
+      if (cacheable) {
+        sizeCache[key] = entry;
+        if (!result.estimated) await saveSizeCache(config);
+      }
     } catch (e) {
-      delete sizeCache[key];
+      if (sizeCache[key] === pending) delete sizeCache[key];
       if (e === DebounceError) throw e;
       return { ...pkg, size: 0, gzip: 0, brotli: 0, error: e as Error };
     }
   } else {
-    (sizeCache[key] as CacheEntry).lastUsed = Date.now();
+    entry.lastUsed = Date.now();
   }
-  const entry = sizeCache[key] as CacheEntry;
   return {
     ...pkg,
     size: entry.size,
@@ -61,55 +70,46 @@ function calcPackageSize(
   packageInfo: PackageInfo,
   config: ImportCostConfig,
 ): Promise<SizeResult> {
-  const delay = config.debounceDelay ?? 500;
-  if (delay === 0) {
-    return new Promise<SizeResult>((resolve, reject) => {
-      calcSize(packageInfo, config, (e, result) =>
-        e ? reject(e) : resolve(result!),
-      );
-    });
-  }
-  const key = `${packageInfo.fileName}#${packageInfo.line}`;
-  return debouncePromise<SizeResult>(
-    key,
-    (resolve, reject) => {
-      calcSize(packageInfo, config, (e, result) =>
-        e ? reject(e) : resolve(result!),
-      );
-    },
+  const delay = config.debounceDelay ?? 0;
+  if (delay === 0) return calcSize(packageInfo, config);
+  return debouncePromise(
+    `${packageInfo.fileName}#${packageInfo.line}`,
+    () => calcSize(packageInfo, config),
     delay,
   );
 }
 
 export async function clearSizeCache(): Promise<void> {
+  sizeCache = {};
+  loading = null;
   try {
-    sizeCache = {};
     await fs.unlink(getCacheFilePath());
   } catch {
-    // silent error
+    // no cache file yet
   }
 }
 
-async function readSizeCache(config?: ImportCostConfig): Promise<void> {
-  try {
-    if (Object.keys(sizeCache).length === 0) {
-      const raw = JSON.parse(
+function readSizeCache(config?: ImportCostConfig): Promise<void> {
+  loading ??= (async () => {
+    try {
+      const raw: Record<string, Partial<CacheEntry>> = JSON.parse(
         await fs.readFile(getCacheFilePath(config), 'utf-8'),
       );
       for (const [key, value] of Object.entries(raw)) {
-        const entry = value as any;
+        if (sizeCache[key] || typeof value.size !== 'number') continue;
+        if (value.estimated) continue;
         sizeCache[key] = {
-          size: entry.size,
-          gzip: entry.gzip,
-          brotli: entry.brotli,
-          estimated: entry.estimated,
-          lastUsed: entry.lastUsed || Date.now(),
+          size: value.size,
+          gzip: value.gzip ?? 0,
+          brotli: value.brotli ?? 0,
+          lastUsed: value.lastUsed ?? Date.now(),
         };
       }
+    } catch {
+      // missing or unreadable cache file: start empty
     }
-  } catch {
-    // silent error
-  }
+  })();
+  return loading;
 }
 
 function evictIfNeeded(): void {
@@ -130,30 +130,34 @@ function evictIfNeeded(): void {
   }
 }
 
-async function saveSizeCache(config?: ImportCostConfig): Promise<void> {
-  try {
-    evictIfNeeded();
-    const keys = Object.keys(sizeCache).filter(key => {
-      const entry = sizeCache[key];
-      const size =
-        entry && !(entry instanceof Promise) ? entry.size : undefined;
-      return typeof size === 'number' && size > 0;
-    });
-    const cache: Record<string, CacheEntry> = {};
-    for (const key of keys) {
-      cache[key] = sizeCache[key] as CacheEntry;
+function saveSizeCache(config?: ImportCostConfig): Promise<void> {
+  dirty = true;
+  saving ??= (async () => {
+    while (dirty) {
+      dirty = false;
+      await writeSizeCache(config);
     }
-    if (Object.keys(cache).length > 0) {
-      const filePath = getCacheFilePath(config);
-      const tmpPath = `${filePath}.tmp.${process.pid}`;
-      await fs.writeFile(tmpPath, JSON.stringify(cache, null, 2), 'utf-8');
-      await fs.rename(tmpPath, filePath);
-    }
-  } catch {
-    // silent error
-  }
+    saving = null;
+  })();
+  return saving;
 }
 
-export function cleanup(): void {
-  // no-op: esbuild runs in-process, no workers to clean up
+async function writeSizeCache(config?: ImportCostConfig): Promise<void> {
+  evictIfNeeded();
+  const cache: Record<string, CacheEntry> = {};
+  for (const [key, entry] of Object.entries(sizeCache)) {
+    if (entry instanceof Promise || entry.estimated || !(entry.size > 0)) {
+      continue;
+    }
+    cache[key] = entry;
+  }
+  if (Object.keys(cache).length === 0) return;
+  const filePath = getCacheFilePath(config);
+  const tmpPath = `${filePath}.tmp.${process.pid}`;
+  try {
+    await fs.writeFile(tmpPath, JSON.stringify(cache), 'utf-8');
+    await fs.rename(tmpPath, filePath);
+  } catch {
+    // best-effort persistence: a failed write only costs a recompute later
+  }
 }

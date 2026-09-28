@@ -1,21 +1,19 @@
-const promises: Record<string, Promise<unknown>> = {};
+const pending = new Map<string, Promise<unknown>>();
 
 export const DebounceError = new Error('DebounceError');
 
 export function debouncePromise<T>(
   key: string,
-  fn: (resolve: (value: T) => void, reject: (reason?: unknown) => void) => void,
+  fn: () => Promise<T>,
   delay = 500,
 ): Promise<T> {
-  const promise = new Promise<T>((resolve, reject) => {
-    setTimeout(
-      () =>
-        promises[key] === promise
-          ? new Promise<T>(fn).then(resolve).catch(reject)
-          : reject(DebounceError),
-      delay,
-    );
+  const promise: Promise<T> = new Promise<T>((resolve, reject) => {
+    setTimeout(() => {
+      if (pending.get(key) !== promise) return reject(DebounceError);
+      pending.delete(key);
+      fn().then(resolve, reject);
+    }, delay);
   });
-  promises[key] = promise;
+  pending.set(key, promise);
   return promise;
 }

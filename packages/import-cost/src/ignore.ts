@@ -34,12 +34,9 @@ export function loadIgnoreFile(dir: string): string[] {
 }
 
 export function findIgnoreFile(startDir: string): string[] {
-  const { root } = path.parse(startDir);
-  let dir = startDir;
-  while (dir !== root) {
+  for (let dir = path.resolve(startDir); ; dir = path.dirname(dir)) {
     const patterns = loadIgnoreFile(dir);
     if (patterns.length > 0) return patterns;
-    dir = path.dirname(dir);
+    if (dir === path.dirname(dir)) return [];
   }
-  return [];
 }

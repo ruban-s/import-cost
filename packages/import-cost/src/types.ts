@@ -9,6 +9,7 @@ export interface PackageInfo {
   brotli?: number;
   estimated?: boolean;
   sideEffects?: boolean | string[];
+  local?: boolean;
   error?: Error;
 }
 
@@ -21,9 +22,10 @@ export interface SizeResult {
 
 export interface ImportCostConfig {
   maxCallTime: number;
-  concurrent: boolean;
+  concurrent?: boolean;
   debounceDelay?: number;
   cacheDir?: string;
+  ignore?: string[];
 }
 
 export const Lang = {

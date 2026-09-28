@@ -1,1 +1,0 @@
-export { Lang } from './types';
