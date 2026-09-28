@@ -18,6 +18,15 @@ function lineNumberAtOffset(source: string, offset: number): number {
   return line;
 }
 
+const blank = (text: string) => text.replace(/[^\n]/g, ' ');
+
+function stripComments(source: string): string {
+  return source.replace(
+    /(["'])(?:\\.|(?!\1)[^\\\n])*\1|`(?:\\.|[^\\`])*`|\/\/[^\n]*|\/\*[\s\S]*?\*\//g,
+    match => (match[0] === '/' ? blank(match) : match),
+  );
+}
+
 export function getPackages(
   fileName: string,
   source: string,
@@ -46,7 +55,7 @@ export function getPackages(
 
   const cleanSource = source.replace(
     /import\s+\w+\s*=\s*require\s*\([^)]+\)\s*;?/g,
-    '',
+    blank,
   );
 
   let imports: ReturnType<typeof parseImports>[0];
@@ -85,9 +94,10 @@ export function getPackages(
     }
   }
 
+  const code = stripComments(source);
   const requireRegex = /require\s*\(\s*(?:'([^']+)'|"([^"]+)"|`([^`]+)`)\s*\)/g;
   let match: RegExpExecArray | null;
-  while ((match = requireRegex.exec(source)) !== null) {
+  while ((match = requireRegex.exec(code)) !== null) {
     const name = match[1] || match[2] || match[3];
     if (!name) continue;
     if (tsRequireNames.has(name) || packages.some(p => p.name === name))
@@ -95,7 +105,7 @@ export function getPackages(
     packages.push({
       fileName,
       name,
-      line: lineNumberAtOffset(source, match.index) + lineOffset,
+      line: lineNumberAtOffset(code, match.index) + lineOffset,
       string: `require('${name}')`,
     });
   }
@@ -104,7 +114,15 @@ export function getPackages(
 }
 
 function isTypeOnlyImport(statement: string): boolean {
-  return /^import\s+type\s/.test(statement.trim());
+  const trimmed = statement.trim();
+  if (/^import\s+type\s/.test(trimmed)) return true;
+  const named = trimmed.match(/^import\s*\{([^}]*)\}\s*from/);
+  if (!named) return false;
+  const specifiers = named[1]
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  return specifiers.length > 0 && specifiers.every(s => /^type\s/.test(s));
 }
 
 function compileImportString(statement: string, packageName: string): string {
@@ -114,31 +132,39 @@ function compileImportString(statement: string, packageName: string): string {
   const namespaceMatch = statement.match(/\*\s+as\s+([a-zA-Z_$][\w$]*)/);
   const namedMatch = statement.match(/\{([^}]+)\}/);
 
-  const parts: string[] = [];
+  const clause: string[] = [];
+  const bindings: string[] = [];
 
-  if (defaultMatch && !namespaceMatch) {
-    parts.push(defaultMatch[1]);
-  }
   if (namespaceMatch) {
-    parts.push(`* as ${namespaceMatch[1]}`);
+    clause.push(`* as ${namespaceMatch[1]}`);
+    bindings.push(namespaceMatch[1]);
+  } else if (defaultMatch) {
+    clause.push(defaultMatch[1]);
+    bindings.push(defaultMatch[1]);
   }
-  if (namedMatch) {
-    const specifiers = namedMatch[1]
-      .split(',')
-      .map(s =>
-        s
-          .trim()
-          .split(/\s+as\s+/)[0]
-          .trim(),
-      )
-      .filter(Boolean)
-      .sort();
-    parts.push(`{${specifiers.join(', ')}}`);
+  const named = (namedMatch?.[1] ?? '')
+    .split(',')
+    .map(s =>
+      s
+        .trim()
+        .split(/\s+as\s+/)[0]
+        .trim(),
+    )
+    .filter(s => s && !/^type\s/.test(s))
+    .sort();
+  if (named.length > 0) {
+    const local = (n: string) => (n === 'default' ? '__default' : n);
+    clause.push(
+      `{${named.map(n => (n === 'default' ? 'default as __default' : n)).join(', ')}}`,
+    );
+    bindings.push(`{${named.map(local).join(', ')}}`);
+  }
+  if (clause.length === 0) {
+    clause.push('* as tmp');
+    bindings.push('tmp');
   }
 
-  const importString = parts.length > 0 ? parts.join(', ') : '* as tmp';
-
-  return `import ${importString} from '${packageName}';\nconsole.log(${importString.replace('* as ', '')});`;
+  return `import ${clause.join(', ')} from '${packageName}';\nconsole.log(${bindings.join(', ')});`;
 }
 
 function fallbackParse(
@@ -148,56 +174,57 @@ function fallbackParse(
   skipNames: Set<string>,
 ): PackageInfo[] {
   const packages: PackageInfo[] = [];
+  const code = stripComments(source);
 
   const importRegex =
-    /import\s+(?!type\s)(?:([^'"{}*\n]+?)\s+from\s+|(\*\s+as\s+\w+)\s+from\s+|\{([^}]+)\}\s+from\s+)['"]([^'"]+)['"]/g;
+    /import\s+(?!type\s)[\w$*{}\s,]+?\s+from\s+['"]([^'"]+)['"]/g;
   let m: RegExpExecArray | null;
-  while ((m = importRegex.exec(source)) !== null) {
-    const name = m[4];
+  while ((m = importRegex.exec(code)) !== null) {
+    const name = m[1];
     if (!name || skipNames.has(name)) continue;
-    const statement = m[0];
+    if (isTypeOnlyImport(m[0])) continue;
     packages.push({
       fileName,
       name,
-      line: lineNumberAtOffset(source, m.index) + lineOffset,
-      string: compileImportString(statement, name),
+      line: lineNumberAtOffset(code, m.index) + lineOffset,
+      string: compileImportString(m[0], name),
     });
   }
 
   const sideEffectRegex = /import\s+['"]([^'"]+)['"]/g;
-  while ((m = sideEffectRegex.exec(source)) !== null) {
+  while ((m = sideEffectRegex.exec(code)) !== null) {
     const name = m[1];
     if (!name || skipNames.has(name) || packages.some(p => p.name === name))
       continue;
     packages.push({
       fileName,
       name,
-      line: lineNumberAtOffset(source, m.index) + lineOffset,
+      line: lineNumberAtOffset(code, m.index) + lineOffset,
       string: `import * as tmp from '${name}';\nconsole.log(tmp);`,
     });
   }
 
   const dynamicRegex = /import\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
-  while ((m = dynamicRegex.exec(source)) !== null) {
+  while ((m = dynamicRegex.exec(code)) !== null) {
     const name = m[1];
     if (!name || packages.some(p => p.name === name)) continue;
     packages.push({
       fileName,
       name,
-      line: lineNumberAtOffset(source, m.index) + lineOffset,
+      line: lineNumberAtOffset(code, m.index) + lineOffset,
       string: `import('${name}').then(res => console.log(res));`,
     });
   }
 
   const requireRegex = /require\s*\(\s*(?:'([^']+)'|"([^"]+)"|`([^`]+)`)\s*\)/g;
-  while ((m = requireRegex.exec(source)) !== null) {
+  while ((m = requireRegex.exec(code)) !== null) {
     const name = m[1] || m[2] || m[3];
     if (!name || skipNames.has(name) || packages.some(p => p.name === name))
       continue;
     packages.push({
       fileName,
       name,
-      line: lineNumberAtOffset(source, m.index) + lineOffset,
+      line: lineNumberAtOffset(code, m.index) + lineOffset,
       string: `require('${name}')`,
     });
   }
