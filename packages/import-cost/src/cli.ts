@@ -1,16 +1,17 @@
 #!/usr/bin/env node
 
+import { execFileSync } from 'child_process';
 import { filesize } from 'filesize';
 import * as fs from 'fs';
 import * as path from 'path';
-import { findIgnoreFile, isIgnored } from './ignore';
+import { findIgnoreFile } from './ignore';
 import { cleanup, importCostAsync, Lang } from './index';
-import type { PackageInfo } from './types';
+import type { ImportCostConfig, PackageInfo } from './types';
 
-const args = process.argv.slice(2);
+type Entry = PackageInfo & { file: string };
+type Failure = { file: string; message: string };
 
-if (args.includes('--help') || args.includes('-h') || args.length === 0) {
-  console.log(`
+const HELP = `
 Usage: fast-import-cost <command> <files|dirs...> [options]
 
 Commands:
@@ -23,12 +24,18 @@ Options:
   --sort                        Sort results by size (largest first)
   --watch                       Re-scan on file changes
   --ignore <patterns>           Comma-separated package patterns to ignore (e.g. "lodash,@angular/*")
+  --strict                      Exit 1 when a file or import cannot be measured
   --help, -h                    Show this help
 
 Ignore file:
   Create .importcostignore in your project root with one pattern per line.
   Supports exact names and glob patterns (e.g. @angular/*, lodash*).
   Lines starting with # are comments.
+
+Notes:
+  Sizes prefixed with ~ are estimates (bundling failed, entry file size shown).
+  diff measures both refs against the currently installed node_modules, so
+  dependency version bumps are not reflected, only import changes.
 
 Examples:
   fast-import-cost check src/
@@ -38,60 +45,84 @@ Examples:
   fast-import-cost check src/ --ignore "lodash,moment"
   fast-import-cost diff main
   fast-import-cost diff main feature-branch
-`);
+`;
+
+function fail(message: string): never {
+  console.error(message);
+  process.exit(2);
+}
+
+const args = process.argv.slice(2);
+
+if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
+  console.log(HELP);
   process.exit(0);
 }
 
 const command = args[0];
 if (command !== 'check' && command !== 'diff') {
-  console.error(`Unknown command: ${command}. Use "check" or "diff".`);
-  process.exit(1);
+  fail(`Unknown command: ${command}. Use "check" or "diff".`);
 }
 
-const budgetIdx = args.indexOf('--budget');
-const budget = budgetIdx !== -1 ? Number(args[budgetIdx + 1]) : 0;
-const jsonOutput = args.includes('--json');
-const sortBySize = args.includes('--sort');
-const watchMode = args.includes('--watch');
-const ignoreIdx = args.indexOf('--ignore');
-const cliIgnorePatterns =
-  ignoreIdx !== -1
-    ? args[ignoreIdx + 1]
-        .split(',')
-        .map(s => s.trim())
-        .filter(Boolean)
-    : [];
-
-// Value-bearing flags: skip the flag AND its argument
-const valueFlagIndices = new Set<number>();
-if (budgetIdx !== -1) {
-  valueFlagIndices.add(budgetIdx);
-  valueFlagIndices.add(budgetIdx + 1);
-}
-if (ignoreIdx !== -1) {
-  valueFlagIndices.add(ignoreIdx);
-  valueFlagIndices.add(ignoreIdx + 1);
+const VALUE_FLAGS = new Set(['--budget', '--ignore']);
+const BOOLEAN_FLAGS = new Set(['--json', '--sort', '--watch', '--strict']);
+const flags = new Map<string, string>();
+const positional: string[] = [];
+for (let i = 1; i < args.length; i++) {
+  const arg = args[i];
+  if (VALUE_FLAGS.has(arg)) {
+    const value = args[++i];
+    if (value === undefined || value.startsWith('--')) {
+      fail(`${arg} requires a value`);
+    }
+    flags.set(arg, value);
+  } else if (BOOLEAN_FLAGS.has(arg)) {
+    flags.set(arg, 'true');
+  } else if (arg.startsWith('-')) {
+    fail(`Unknown option: ${arg}`);
+  } else {
+    positional.push(arg);
+  }
 }
 
-const paths = args
-  .slice(1)
-  .filter((a, i) => !a.startsWith('--') && !valueFlagIndices.has(i + 1));
+const budgetArg = flags.get('--budget');
+const budget = budgetArg === undefined ? 0 : Number(budgetArg);
+if (budgetArg !== undefined && !(Number.isFinite(budget) && budget > 0)) {
+  fail(
+    `Invalid --budget value "${budgetArg}": expected a number of KB greater than 0`,
+  );
+}
+const jsonOutput = flags.has('--json');
+const sortBySize = flags.has('--sort');
+const watchMode = flags.has('--watch');
+const strict = flags.has('--strict');
+const cliIgnorePatterns = (flags.get('--ignore') ?? '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 
-if (paths.length === 0) {
-  console.error('No files or directories specified.');
-  process.exit(1);
+if (command === 'check' && positional.length === 0) {
+  fail('No files or directories specified.');
 }
 
-const EXTENSIONS = ['.js', '.jsx', '.ts', '.tsx', '.vue', '.svelte'];
+const EXTENSIONS = [
+  '.js',
+  '.jsx',
+  '.mjs',
+  '.cjs',
+  '.ts',
+  '.tsx',
+  '.mts',
+  '.cts',
+  '.vue',
+  '.svelte',
+];
 
-function getLanguage(
-  fileName: string,
-): (typeof Lang)[keyof typeof Lang] | null {
-  const ext = path.extname(fileName);
-  if (['.ts', '.tsx'].includes(ext)) return Lang.TYPESCRIPT;
-  if (['.js', '.jsx'].includes(ext)) return Lang.JAVASCRIPT;
-  if (ext === '.vue') return Lang.VUE;
-  if (ext === '.svelte') return Lang.SVELTE;
+function getLanguage(fileName: string): Lang | null {
+  if (/\.[cm]?tsx?$/.test(fileName)) return Lang.TYPESCRIPT;
+  if (/\.[cm]?jsx?$/.test(fileName)) return Lang.JAVASCRIPT;
+  if (fileName.endsWith('.vue')) return Lang.VUE;
+  if (fileName.endsWith('.svelte')) return Lang.SVELTE;
   return null;
 }
 
@@ -119,9 +150,7 @@ function walkDir(dir: string, files: string[]): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name.startsWith('.')) continue;
-    if (
-      ['node_modules', 'dist', 'build', 'coverage', '.git'].includes(entry.name)
-    )
+    if (['node_modules', 'dist', 'build', 'coverage'].includes(entry.name))
       continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
@@ -132,83 +161,80 @@ function walkDir(dir: string, files: string[]): void {
   }
 }
 
-async function processFile(fileName: string): Promise<PackageInfo[]> {
-  const lang = getLanguage(fileName);
-  if (!lang) return [];
-  const content = fs.readFileSync(fileName, 'utf-8');
-  return importCostAsync(fileName, content, lang, {
+function getConfig(): ImportCostConfig {
+  return {
     maxCallTime: 30000,
-    concurrent: true,
     debounceDelay: 0,
-  });
+    ignore: [...cliIgnorePatterns, ...findIgnoreFile(process.cwd())],
+  };
+}
+
+function errorMessage(e: unknown): string {
+  return (e instanceof Error ? e.message : String(e)).split('\n')[0];
 }
 
 const CONCURRENCY = 10;
 
-async function processFilesParallel(
+async function scanFiles(
   files: string[],
+  config: ImportCostConfig,
   onProgress: (done: number, total: number) => void,
-): Promise<(PackageInfo & { file: string })[]> {
-  const allPackages: (PackageInfo & { file: string })[] = [];
+): Promise<{ entries: Entry[]; failures: Failure[] }> {
+  const entries: Entry[] = [];
+  const failures: Failure[] = [];
+  const queue = [...files];
   let completed = 0;
 
-  async function worker(queue: string[]) {
-    while (queue.length > 0) {
-      const file = queue.shift()!;
+  async function worker() {
+    for (let file = queue.shift(); file; file = queue.shift()) {
+      const lang = getLanguage(file);
       try {
-        const packages = await processFile(file);
-        for (const pkg of packages) {
-          if (pkg.size && pkg.size > 0) {
-            allPackages.push({ ...pkg, file });
-          }
+        if (lang) {
+          const content = fs.readFileSync(file, 'utf-8');
+          const packages = await importCostAsync(file, content, lang, config);
+          for (const pkg of packages) entries.push({ ...pkg, file });
         }
-      } catch {
-        // skip files that fail
+      } catch (e) {
+        failures.push({ file, message: errorMessage(e) });
       }
-      completed++;
-      onProgress(completed, files.length);
+      onProgress(++completed, files.length);
     }
   }
 
-  const queue = [...files];
-  const workers = Array.from(
-    { length: Math.min(CONCURRENCY, files.length) },
-    () => worker(queue),
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY, files.length) }, worker),
   );
-  await Promise.all(workers);
-  return allPackages;
+  return { entries, failures };
 }
 
-function getIgnorePatterns(): string[] {
-  const filePatterns = findIgnoreFile(process.cwd());
-  return [...cliIgnorePatterns, ...filePatterns];
-}
+const isOverBudget = (pkg: PackageInfo) =>
+  budget > 0 && (pkg.size || 0) / 1024 > budget;
+const format = (bytes: number) => filesize(bytes, { standard: 'jedec' });
 
-function filterByIgnore(
-  packages: (PackageInfo & { file: string })[],
-  patterns: string[],
-): (PackageInfo & { file: string })[] {
-  if (patterns.length === 0) return packages;
-  return packages.filter(pkg => !isIgnored(pkg.name, patterns));
+function printFailures(failures: Failure[]): void {
+  for (const { file, message } of failures) {
+    console.error(
+      `  ⚠ Skipped ${path.relative(process.cwd(), file)}: ${message}`,
+    );
+  }
 }
 
 function printResults(
-  allPackages: (PackageInfo & { file: string })[],
+  entries: Entry[],
+  failures: Failure[],
   fileCount: number,
 ): number {
-  if (sortBySize) {
-    allPackages.sort((a, b) => (b.size || 0) - (a.size || 0));
-  }
-
-  let overBudgetCount = 0;
-  if (budget > 0) {
-    for (const pkg of allPackages) {
-      if ((pkg.size || 0) / 1024 > budget) overBudgetCount++;
-    }
-  }
+  const measured = entries.filter(pkg => !pkg.error && (pkg.size || 0) > 0);
+  const errored = entries.filter(pkg => pkg.error);
+  const shown = [...measured, ...errored].sort((a, b) =>
+    sortBySize
+      ? (b.size || 0) - (a.size || 0)
+      : a.file.localeCompare(b.file) || a.line - b.line,
+  );
+  const overBudgetCount = measured.filter(isOverBudget).length;
 
   if (jsonOutput) {
-    const output = allPackages.map(pkg => ({
+    const output = shown.map(pkg => ({
       file: path.relative(process.cwd(), pkg.file),
       name: pkg.name,
       line: pkg.line,
@@ -216,82 +242,80 @@ function printResults(
       gzip: pkg.gzip,
       brotli: pkg.brotli,
       sideEffects: pkg.sideEffects,
-      overBudget: budget > 0 && (pkg.size || 0) / 1024 > budget,
+      overBudget: isOverBudget(pkg),
+      ...(pkg.estimated ? { estimated: true } : {}),
+      ...(pkg.error ? { error: errorMessage(pkg.error) } : {}),
     }));
     console.log(JSON.stringify(output, null, 2));
-  } else {
-    if (allPackages.length === 0) {
-      console.log('No imports found.');
-    } else {
-      console.log(
-        `  Found ${allPackages.length} imports in ${fileCount} files\n`,
-      );
-      for (const pkg of allPackages) {
-        const size = filesize(pkg.size!, { standard: 'jedec' });
-        const gzip = filesize(pkg.gzip!, { standard: 'jedec' });
-        const brotli = pkg.brotli
-          ? filesize(pkg.brotli, { standard: 'jedec' })
-          : '-';
-        const rel = path.relative(process.cwd(), pkg.file);
-        const over = budget > 0 && (pkg.size || 0) / 1024 > budget;
-        const marker = over ? ' ⚠ OVER BUDGET' : '';
-        const treeshake = pkg.sideEffects === false ? ' [tree-shakeable]' : '';
-        console.log(
-          `  ${rel}:${pkg.line}  ${pkg.name}  ${size} (gzip: ${gzip}, brotli: ${brotli})${treeshake}${marker}`,
-        );
-      }
-      console.log();
-    }
+    printFailures(failures);
+    return overBudgetCount;
+  }
 
-    if (budget > 0) {
-      if (overBudgetCount > 0) {
+  if (shown.length === 0) {
+    console.log('No imports found.');
+  } else {
+    console.log(`  Found ${measured.length} imports in ${fileCount} files\n`);
+    for (const pkg of shown) {
+      const rel = path.relative(process.cwd(), pkg.file);
+      if (pkg.error) {
         console.log(
-          `  ⚠ ${overBudgetCount} import(s) exceed the budget of ${budget} KB\n`,
+          `  ${rel}:${pkg.line}  ${pkg.name}  ⚠ failed: ${errorMessage(pkg.error)}`,
         );
-      } else {
-        console.log(`  ✓ All imports within budget (${budget} KB)\n`);
+        continue;
       }
+      const prefix = pkg.estimated ? '~' : '';
+      const brotli = pkg.brotli ? prefix + format(pkg.brotli) : '-';
+      const sideEffects =
+        pkg.sideEffects === false ? ' [sideEffects: false]' : '';
+      const estimated = pkg.estimated ? ' (estimated)' : '';
+      const marker = isOverBudget(pkg) ? ' ⚠ OVER BUDGET' : '';
+      console.log(
+        `  ${rel}:${pkg.line}  ${pkg.name}  ${prefix}${format(pkg.size || 0)} (gzip: ${prefix}${format(pkg.gzip || 0)}, brotli: ${brotli})${estimated}${sideEffects}${marker}`,
+      );
     }
+    console.log();
+  }
+  printFailures(failures);
+  if (budget > 0) {
+    console.log(
+      overBudgetCount > 0
+        ? `  ⚠ ${overBudgetCount} import(s) exceed the budget of ${budget} KB\n`
+        : `  ✓ All imports within budget (${budget} KB)\n`,
+    );
   }
   return overBudgetCount;
 }
 
-async function runCheck(): Promise<void> {
-  const files = collectFiles(paths);
+const showProgress = !jsonOutput && process.stderr.isTTY;
+
+async function runCheck(): Promise<boolean> {
+  const files = collectFiles(positional);
   if (files.length === 0) {
     console.error('No matching files found.');
-    process.exit(1);
+    process.exitCode = 1;
+    return false;
   }
 
-  const ignorePatterns = getIgnorePatterns();
-
-  if (!jsonOutput) {
+  if (showProgress)
     process.stderr.write(`  Scanning ${files.length} files...\n`);
-  }
+  const { entries, failures } = await scanFiles(
+    files,
+    getConfig(),
+    (done, total) => {
+      if (showProgress)
+        process.stderr.write(`\r  Progress: ${done}/${total} files`);
+    },
+  );
+  if (showProgress) process.stderr.write('\r\x1b[K');
 
-  const allPackages = await processFilesParallel(files, (done, total) => {
-    if (!jsonOutput) {
-      process.stderr.write(`\r  Progress: ${done}/${total} files`);
-    }
-  });
-
-  if (!jsonOutput) {
-    process.stderr.write('\r\x1b[K');
-  }
-
-  const filtered = filterByIgnore(allPackages, ignorePatterns);
-  const overBudgetCount = printResults(filtered, files.length);
-
-  if (!watchMode) {
-    cleanup();
-    process.exit(budget > 0 && overBudgetCount > 0 ? 1 : 0);
-  }
+  const overBudgetCount = printResults(entries, failures, files.length);
+  const unmeasured = failures.length + entries.filter(pkg => pkg.error).length;
+  process.exitCode = overBudgetCount > 0 || (strict && unmeasured > 0) ? 1 : 0;
+  return true;
 }
 
-// --- Watch mode ---
-
 function startWatch(): void {
-  const resolvedPaths = paths.map(p => path.resolve(p));
+  const resolvedPaths = positional.map(p => path.resolve(p));
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   console.log('  Watching for changes... (press Ctrl+C to stop)\n');
@@ -300,13 +324,16 @@ function startWatch(): void {
     try {
       fs.watch(target, { recursive: true }, (_event, filename) => {
         if (!filename) return;
-        const ext = path.extname(filename);
-        if (!EXTENSIONS.includes(ext)) return;
+        if (!EXTENSIONS.includes(path.extname(filename))) return;
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(async () => {
-          process.stdout.write('\x1b[2J\x1b[H'); // clear screen
+          process.stdout.write('\x1b[2J\x1b[H');
           console.log(`  File changed: ${filename}\n`);
-          await runCheck();
+          try {
+            await runCheck();
+          } catch (e) {
+            console.error(e);
+          }
           console.log('  Watching for changes... (press Ctrl+C to stop)\n');
         }, 300);
       });
@@ -316,101 +343,87 @@ function startWatch(): void {
   }
 }
 
-// --- Diff mode ---
-
-import { execFileSync } from 'child_process';
-
 function gitExec(gitArgs: string[]): string {
-  return execFileSync('git', gitArgs, { encoding: 'utf-8' }).trim();
+  return execFileSync('git', gitArgs, {
+    encoding: 'utf-8',
+    maxBuffer: 1 << 26,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  }).trim();
 }
 
 async function runDiff(): Promise<void> {
-  const diffArgs = args.slice(1).filter(a => !a.startsWith('--'));
-  const base = diffArgs[0];
-  const head = diffArgs[1] || 'HEAD';
+  const [base, head = 'HEAD'] = positional;
+  if (!base) fail('Usage: fast-import-cost diff <base> [head]');
 
-  if (!base) {
-    console.error('Usage: fast-import-cost diff <base> [head]');
-    process.exit(1);
-  }
-
-  // Get changed files between refs
+  let top: string;
   let changedFiles: string[];
   try {
-    const output = gitExec([
+    top = gitExec(['rev-parse', '--show-toplevel']);
+    changedFiles = gitExec([
       'diff',
       '--name-only',
       `${base}...${head}`,
       '--',
       ...EXTENSIONS.map(e => `*${e}`),
-    ]);
-    changedFiles = output
+    ])
       .split('\n')
-      .filter(Boolean)
-      .filter(f => EXTENSIONS.includes(path.extname(f)));
-  } catch (e: any) {
-    console.error(`Failed to get git diff: ${e.message}`);
-    process.exit(1);
+      .filter(f => f && getLanguage(f));
+  } catch (e) {
+    console.error(`Failed to get git diff: ${errorMessage(e)}`);
+    process.exitCode = 1;
+    return;
   }
 
   if (changedFiles.length === 0) {
     console.log('No relevant file changes between refs.');
-    process.exit(0);
+    return;
   }
 
-  const ignorePatterns = getIgnorePatterns();
-
+  const config = getConfig();
   if (!jsonOutput) {
     process.stderr.write(
       `  Comparing ${changedFiles.length} changed files: ${base} → ${head}\n`,
     );
   }
 
-  // Get file contents at a ref and calculate import costs
-  async function getPackagesAtRef(
-    ref: string,
-    files: string[],
-  ): Promise<(PackageInfo & { file: string })[]> {
-    const results: (PackageInfo & { file: string })[] = [];
-    for (const file of files) {
+  const failures: Failure[] = [];
+  async function getPackagesAtRef(ref: string): Promise<Entry[]> {
+    const results: Entry[] = [];
+    for (const file of changedFiles) {
+      let content: string;
       try {
-        const content = gitExec(['show', `${ref}:${file}`]);
-        const lang = getLanguage(file);
-        if (!lang) continue;
-        const absPath = path.resolve(file);
-        const packages = await importCostAsync(absPath, content, lang, {
-          maxCallTime: 30000,
-          concurrent: true,
-          debounceDelay: 0,
-        });
-        for (const pkg of packages) {
-          if (pkg.size && pkg.size > 0) {
-            results.push({ ...pkg, file });
-          }
-        }
+        content = gitExec(['show', `${ref}:${file}`]);
       } catch {
-        // file may not exist at this ref
+        continue;
+      }
+      const lang = getLanguage(file);
+      if (!lang) continue;
+      try {
+        const packages = await importCostAsync(
+          path.resolve(top, file),
+          content,
+          lang,
+          config,
+        );
+        for (const pkg of packages) {
+          if (pkg.size && pkg.size > 0) results.push({ ...pkg, file });
+        }
+      } catch (e) {
+        failures.push({ file: `${ref}:${file}`, message: errorMessage(e) });
       }
     }
     return results;
   }
 
   const [basePackages, headPackages] = await Promise.all([
-    getPackagesAtRef(base, changedFiles),
-    getPackagesAtRef(head, changedFiles),
+    getPackagesAtRef(base),
+    getPackagesAtRef(head),
   ]);
 
-  const baseFiltered = filterByIgnore(basePackages, ignorePatterns);
-  const headFiltered = filterByIgnore(headPackages, ignorePatterns);
-
-  // Build lookup maps
-  type PkgEntry = PackageInfo & { file: string };
-  const baseMap = new Map<string, PkgEntry>();
-  const headMap = new Map<string, PkgEntry>();
-  for (const pkg of baseFiltered) baseMap.set(`${pkg.file}:${pkg.name}`, pkg);
-  for (const pkg of headFiltered) headMap.set(`${pkg.file}:${pkg.name}`, pkg);
-
-  const allKeys = new Set([...baseMap.keys(), ...headMap.keys()]);
+  const baseMap = new Map<string, Entry>();
+  const headMap = new Map<string, Entry>();
+  for (const pkg of basePackages) baseMap.set(`${pkg.file}:${pkg.name}`, pkg);
+  for (const pkg of headPackages) headMap.set(`${pkg.file}:${pkg.name}`, pkg);
 
   interface DiffEntry {
     file: string;
@@ -422,11 +435,11 @@ async function runDiff(): Promise<void> {
   }
 
   const diffs: DiffEntry[] = [];
-  for (const key of allKeys) {
+  for (const key of new Set([...baseMap.keys(), ...headMap.keys()])) {
     const basePkg = baseMap.get(key);
     const headPkg = headMap.get(key);
-    const file = (headPkg || basePkg)!.file;
-    const name = (headPkg || basePkg)!.name;
+    const pkg = headPkg ?? basePkg;
+    if (!pkg) continue;
     const baseSize = basePkg?.size || 0;
     const headSize = headPkg?.size || 0;
     const delta = headSize - baseSize;
@@ -435,68 +448,67 @@ async function runDiff(): Promise<void> {
     if (!basePkg) status = 'added';
     else if (!headPkg) status = 'removed';
     else if (delta !== 0) status = 'changed';
-    else continue; // unchanged, skip
+    else continue;
 
-    diffs.push({ file, name, status, baseSize, headSize, delta });
+    diffs.push({
+      file: pkg.file,
+      name: pkg.name,
+      status,
+      baseSize,
+      headSize,
+      delta,
+    });
   }
 
   diffs.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
   if (jsonOutput) {
     console.log(JSON.stringify(diffs, null, 2));
+  } else if (diffs.length === 0) {
+    console.log('  No import size changes.\n');
   } else {
-    if (diffs.length === 0) {
-      console.log('  No import size changes.\n');
-    } else {
-      console.log(
-        `  ${diffs.length} import${diffs.length !== 1 ? 's' : ''} changed between ${base} and ${head}\n`,
-      );
-      for (const d of diffs) {
-        const deltaStr = filesize(Math.abs(d.delta), { standard: 'jedec' });
-        const sign = d.delta > 0 ? '+' : '-';
-        const icon =
-          d.status === 'added'
-            ? '+ '
-            : d.status === 'removed'
-              ? '- '
-              : d.delta > 0
-                ? '↑ '
-                : '↓ ';
-        const sizeInfo =
-          d.status === 'added'
-            ? filesize(d.headSize, { standard: 'jedec' })
-            : d.status === 'removed'
-              ? filesize(d.baseSize, { standard: 'jedec' })
-              : `${sign}${deltaStr}`;
-        console.log(`  ${icon}${d.file}  ${d.name}  ${sizeInfo}`);
-      }
-      const totalDelta = diffs.reduce((sum, d) => sum + d.delta, 0);
-      const totalStr = filesize(Math.abs(totalDelta), { standard: 'jedec' });
-      const totalSign = totalDelta > 0 ? '+' : '-';
-      console.log(
-        `\n  Total change: ${totalDelta === 0 ? '0 B' : `${totalSign}${totalStr}`}\n`,
-      );
+    console.log(
+      `  ${diffs.length} import${diffs.length !== 1 ? 's' : ''} changed between ${base} and ${head}\n`,
+    );
+    for (const d of diffs) {
+      const icon =
+        d.status === 'added'
+          ? '+ '
+          : d.status === 'removed'
+            ? '- '
+            : d.delta > 0
+              ? '↑ '
+              : '↓ ';
+      const sizeInfo =
+        d.status === 'added'
+          ? format(d.headSize)
+          : d.status === 'removed'
+            ? format(d.baseSize)
+            : `${d.delta > 0 ? '+' : '-'}${format(Math.abs(d.delta))}`;
+      console.log(`  ${icon}${d.file}  ${d.name}  ${sizeInfo}`);
     }
+    const totalDelta = diffs.reduce((sum, d) => sum + d.delta, 0);
+    const total =
+      totalDelta === 0
+        ? '0 B'
+        : `${totalDelta > 0 ? '+' : '-'}${format(Math.abs(totalDelta))}`;
+    console.log(`\n  Total change: ${total}\n`);
   }
-
-  cleanup();
-  process.exit(0);
+  printFailures(failures);
+  if (strict && failures.length > 0) process.exitCode = 1;
 }
 
-// --- Entry point ---
-
-if (command === 'diff') {
-  runDiff().catch(e => {
-    console.error(e);
-    process.exit(1);
-  });
-} else {
-  runCheck()
-    .then(() => {
-      if (watchMode) startWatch();
-    })
-    .catch(e => {
-      console.error(e);
-      process.exit(1);
-    });
+async function main(): Promise<void> {
+  if (command === 'diff') {
+    await runDiff();
+  } else if ((await runCheck()) && watchMode) {
+    return startWatch();
+  }
+  await cleanup();
 }
+
+main().catch(async e => {
+  console.error(e);
+  process.exitCode = 1;
+  await cleanup();
+});
