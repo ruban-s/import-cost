@@ -669,6 +669,21 @@ describe('importCost', () => {
         2,
       );
     });
+    it('applies --budget to the chosen size metric', () => {
+      const budget = (metric?: string) =>
+        run([
+          'check',
+          fixture('import.js'),
+          '--budget',
+          '1',
+          ...(metric ? ['--budget-metric', metric] : []),
+        ]);
+      expect(budget().status).to.equal(1);
+      const gzip = budget('gzip');
+      expect(gzip.status).to.equal(0);
+      expect(gzip.stdout).to.include('within budget (1 KB gzip)');
+      expect(budget('zstd').status).to.equal(2);
+    });
     it('writes complete JSON through a pipe', async () => {
       const files: Record<string, string> = {};
       for (let i = 0; i < 400; i++) {

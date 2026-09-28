@@ -20,6 +20,7 @@ Commands:
 
 Options:
   --budget <KB>                 Max allowed import size in KB (exit 1 if exceeded)
+  --budget-metric <metric>      Size the budget applies to: minified (default), gzip or brotli
   --json                        Output results as JSON
   --sort                        Sort results by size (largest first)
   --watch                       Re-scan on file changes
@@ -41,6 +42,7 @@ Examples:
   fast-import-cost check src/
   fast-import-cost check src/app.ts --budget 100
   fast-import-cost check . --json --budget 50
+  fast-import-cost check src/ --budget 30 --budget-metric gzip
   fast-import-cost check src/ --watch
   fast-import-cost check src/ --ignore "lodash,moment"
   fast-import-cost diff main
@@ -64,7 +66,7 @@ if (command !== 'check' && command !== 'diff') {
   fail(`Unknown command: ${command}. Use "check" or "diff".`);
 }
 
-const VALUE_FLAGS = new Set(['--budget', '--ignore']);
+const VALUE_FLAGS = new Set(['--budget', '--budget-metric', '--ignore']);
 const BOOLEAN_FLAGS = new Set(['--json', '--sort', '--watch', '--strict']);
 const flags = new Map<string, string>();
 const positional: string[] = [];
@@ -90,6 +92,13 @@ const budget = budgetArg === undefined ? 0 : Number(budgetArg);
 if (budgetArg !== undefined && !(Number.isFinite(budget) && budget > 0)) {
   fail(
     `Invalid --budget value "${budgetArg}": expected a number of KB greater than 0`,
+  );
+}
+const BUDGET_METRICS = ['minified', 'gzip', 'brotli'] as const;
+const budgetMetric = flags.get('--budget-metric') ?? 'minified';
+if (!BUDGET_METRICS.some(metric => metric === budgetMetric)) {
+  fail(
+    `Invalid --budget-metric value "${budgetMetric}": expected ${BUDGET_METRICS.join(', ')}`,
   );
 }
 const jsonOutput = flags.has('--json');
@@ -207,8 +216,14 @@ async function scanFiles(
   return { entries, failures };
 }
 
+const budgetedSize = (pkg: PackageInfo) =>
+  (budgetMetric === 'gzip'
+    ? pkg.gzip
+    : budgetMetric === 'brotli'
+      ? pkg.brotli
+      : pkg.size) || 0;
 const isOverBudget = (pkg: PackageInfo) =>
-  budget > 0 && (pkg.size || 0) / 1024 > budget;
+  budget > 0 && budgetedSize(pkg) / 1024 > budget;
 const format = (bytes: number) => filesize(bytes, { standard: 'jedec' });
 
 function printFailures(failures: Failure[]): void {
@@ -277,10 +292,11 @@ function printResults(
   }
   printFailures(failures);
   if (budget > 0) {
+    const limit = `${budget} KB${budgetMetric === 'minified' ? '' : ` ${budgetMetric}`}`;
     console.log(
       overBudgetCount > 0
-        ? `  ⚠ ${overBudgetCount} import(s) exceed the budget of ${budget} KB\n`
-        : `  ✓ All imports within budget (${budget} KB)\n`,
+        ? `  ⚠ ${overBudgetCount} import(s) exceed the budget of ${limit}\n`
+        : `  ✓ All imports within budget (${limit})\n`,
     );
   }
   return overBudgetCount;

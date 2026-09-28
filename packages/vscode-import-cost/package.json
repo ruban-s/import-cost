@@ -155,6 +155,21 @@
           "default": 0,
           "description": "Max allowed import size in KB. Imports exceeding this show a warning. Set to 0 to disable."
         },
+        "importCost.budgetMetric": {
+          "type": "string",
+          "default": "minified",
+          "enum": [
+            "minified",
+            "gzip",
+            "brotli"
+          ],
+          "enumDescriptions": [
+            "Compare the minified size",
+            "Compare the gzip-compressed size (what most servers send)",
+            "Compare the brotli-compressed size"
+          ],
+          "description": "Which size importCost.budgetKB is compared against"
+        },
         "importCost.showCalculatingDecoration": {
           "type": "boolean",
           "default": true,

@@ -3,6 +3,7 @@ import type { PackageInfo } from 'import-cost-core';
 import { ALTERNATIVES, importCost, isIgnored, Lang } from 'import-cost-core';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { budgetDescription, isOverBudget } from './budget';
 import { documentPath, ignorePatternsFor } from './document';
 import logger from './logger';
 
@@ -129,14 +130,6 @@ export function processPackageJson(document: vscode.TextDocument): void {
   });
 }
 
-function isOverBudget(pkg: PackageInfo): boolean {
-  if (!pkg.size) return false;
-  const budget = vscode.workspace
-    .getConfiguration('importCost')
-    .get<number>('budgetKB', 0);
-  return budget > 0 && pkg.size / 1024 > budget;
-}
-
 function getDecorationColor(pkg: PackageInfo) {
   const configuration = vscode.workspace.getConfiguration('importCost');
   const sizeInKB = (pkg.size || 0) / 1024;
@@ -258,12 +251,9 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   }
 
   if (isOverBudget(pkg)) {
-    const budget = vscode.workspace
-      .getConfiguration('importCost')
-      .get<number>('budgetKB', 0);
     md.appendMarkdown(`\n---\n`);
     md.appendMarkdown(
-      `$(warning) **Over budget!** This package is ${size} — budget is ${budget} KB.\n`,
+      `$(warning) **Over budget!** The budget is ${budgetDescription()}.\n`,
     );
   }
 

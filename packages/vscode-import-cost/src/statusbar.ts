@@ -1,6 +1,7 @@
 import { filesize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
+import { isOverBudget } from './budget';
 import { documentPath } from './document';
 import type { WorkspaceImportIndex } from './workspace-index';
 
@@ -50,13 +51,7 @@ export function setFileCost(fileName: string, packages: PackageInfo[]): void {
   const gzip = packages.reduce((sum, pkg) => sum + (pkg.gzip || 0), 0);
   const brotli = packages.reduce((sum, pkg) => sum + (pkg.brotli || 0), 0);
   const count = packages.filter(pkg => (pkg.size || 0) > 0).length;
-  const budget = vscode.workspace
-    .getConfiguration('importCost')
-    .get<number>('budgetKB', 0);
-  const overBudget =
-    budget > 0
-      ? packages.filter(pkg => (pkg.size || 0) / 1024 > budget).length
-      : 0;
+  const overBudget = packages.filter(isOverBudget).length;
 
   let uniqueTotal = total;
   let uniqueGzip = gzip;

@@ -2,6 +2,7 @@ import { filesize as fileSize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
 import { ALTERNATIVES } from 'import-cost-core';
 import * as vscode from 'vscode';
+import { budgetDescription, isOverBudget } from './budget';
 import { documentPath } from './document';
 import logger from './logger';
 import type { WorkspaceImportIndex } from './workspace-index';
@@ -65,14 +66,6 @@ export function calculated(fileName: string, packageInfo: PackageInfo): void {
   if (!decorations[fileName]) decorations[fileName] = {};
   decorate(fileName, packageInfo);
   flushDecorationsDebounced(fileName);
-}
-
-function isOverBudget(packageInfo: PackageInfo | undefined): boolean {
-  if (!packageInfo?.size) return false;
-  const budget = vscode.workspace
-    .getConfiguration('importCost')
-    .get<number>('budgetKB', 0);
-  return budget > 0 && packageInfo.size / 1024 > budget;
 }
 
 function getDecorationMessage(packageInfo: PackageInfo | undefined) {
@@ -296,12 +289,9 @@ function buildHoverMessage(pkg: PackageInfo): vscode.MarkdownString {
   }
 
   if (isOverBudget(pkg)) {
-    const budget = vscode.workspace
-      .getConfiguration('importCost')
-      .get<number>('budgetKB', 0);
     md.appendMarkdown(`\n---\n`);
     md.appendMarkdown(
-      `$(warning) **Over budget!** This import is ${size} — budget is ${budget} KB.\n`,
+      `$(warning) **Over budget!** The budget is ${budgetDescription()}.\n`,
     );
   } else if (sizeKB > 100) {
     md.appendMarkdown(`\n---\n`);

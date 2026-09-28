@@ -199,6 +199,11 @@ export async function activate(context: vscode.ExtensionContext) {
           clearDuplicateDiagnostics();
           refreshDuplicates();
         }
+        if (ev.affectsConfiguration('importCost')) {
+          for (const editor of vscode.window.visibleTextEditors) {
+            processDocument(editor.document);
+          }
+        }
       }),
       vscode.window.onDidChangeActiveTextEditor(editor => {
         if (!editor?.document) return;

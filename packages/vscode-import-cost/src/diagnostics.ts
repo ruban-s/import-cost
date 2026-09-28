@@ -1,6 +1,12 @@
 import { filesize } from 'filesize';
 import type { PackageInfo } from 'import-cost-core';
 import * as vscode from 'vscode';
+import {
+  budgetDescription,
+  budgetedSize,
+  budgetSettings,
+  isOverBudget,
+} from './budget';
 
 const collection = vscode.languages.createDiagnosticCollection('importCost');
 
@@ -8,23 +14,22 @@ export function updateDiagnostics(
   uri: vscode.Uri,
   packages: PackageInfo[],
 ): void {
-  const configuration = vscode.workspace.getConfiguration('importCost');
-  const budget = configuration.get<number>('budgetKB', 0);
-  if (budget <= 0) {
+  const { limitKB, metric } = budgetSettings();
+  if (limitKB <= 0) {
     collection.delete(uri);
     return;
   }
 
   const diagnostics: vscode.Diagnostic[] = [];
   for (const pkg of packages) {
-    if (!pkg.size || pkg.size / 1024 <= budget) continue;
+    if (!isOverBudget(pkg)) continue;
 
     const line = pkg.line - 1;
     const range = new vscode.Range(line, 0, line, 1000);
-    const size = filesize(pkg.size, { standard: 'jedec' });
+    const size = filesize(budgetedSize(pkg, metric), { standard: 'jedec' });
     const diagnostic = new vscode.Diagnostic(
       range,
-      `Import "${pkg.name}" is ${size} — exceeds budget of ${budget} KB`,
+      `Import "${pkg.name}" is ${size}${metric === 'minified' ? '' : ` ${metric}`} — exceeds budget of ${budgetDescription()}`,
       vscode.DiagnosticSeverity.Warning,
     );
     diagnostic.source = 'Import Cost';
