@@ -1,5 +1,5 @@
-import { type CodeLensProvider, workspace } from 'coc.nvim';
-import { importCost, Lang } from 'import-cost-core';
+import { type CodeLensProvider, Uri, workspace } from 'coc.nvim';
+import { ALTERNATIVES, importCost, Lang } from 'import-cost-core';
 import type { CodeLens, TextDocument } from 'vscode-languageserver-protocol';
 
 let fileSize: any;
@@ -12,34 +12,9 @@ async function getFileSize() {
 
 import logger from './logger';
 
-const ALTERNATIVES: Record<string, { to: string; reason: string }> = {
-  moment: { to: 'dayjs', reason: 'dayjs has the same API at ~2KB vs ~300KB' },
-  lodash: {
-    to: 'lodash-es or individual imports',
-    reason: 'lodash-es is tree-shakeable',
-  },
-  axios: { to: 'ky or native fetch', reason: 'ky is ~3KB, fetch is built-in' },
-  uuid: {
-    to: 'crypto.randomUUID()',
-    reason: 'built into Node 19+ and modern browsers',
-  },
-  classnames: {
-    to: 'clsx',
-    reason: 'clsx is a smaller drop-in replacement',
-  },
-  underscore: {
-    to: 'lodash-es or native JS',
-    reason: 'most utilities have native equivalents',
-  },
-  bluebird: {
-    to: 'native Promise',
-    reason: 'native Promise is fast enough for most use cases',
-  },
-};
-
 function language(doc) {
   const fileName = doc.uri;
-  const languageId = doc.fileType;
+  const languageId = doc.languageId;
   const configuration = workspace.getConfiguration('importCost');
   const typescriptRegex = new RegExp(
     configuration.typescriptExtensions.join('|'),
@@ -122,15 +97,6 @@ function getTreeshakeHint(packageInfo): boolean {
   return true;
 }
 
-const uriFileProtocol = 'file://';
-function getFileName(uri) {
-  if (uri.startsWith(uriFileProtocol)) {
-    return uri.slice(uriFileProtocol.length);
-  } else {
-    return uri;
-  }
-}
-
 export default class ImportCostCodeLensProvider implements CodeLensProvider {
   private isActive = () => true;
 
@@ -140,18 +106,20 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
 
   public provideCodeLenses(document: TextDocument): Promise<CodeLens[]> {
     return new Promise(resolve => {
-      if (!this.isActive()) {
+      const uri = Uri.parse(document.uri);
+      if (!this.isActive() || uri.scheme !== 'file') {
         resolve([]);
+        return;
       }
 
-      const fileName = getFileName(document.uri);
+      const fileName = uri.fsPath;
       const { timeout } = workspace.getConfiguration('importCost');
       try {
         const emitter = importCost(
           fileName,
           document.getText(),
           language(document),
-          { concurrent: true, maxCallTime: timeout },
+          { maxCallTime: timeout, debounceDelay: 0 },
         );
 
         emitter.on('done', async packages => {
@@ -181,6 +149,7 @@ export default class ImportCostCodeLensProvider implements CodeLensProvider {
           logger.log(
             `error while calculating import costs for ${fileName}: ${e}`,
           );
+          resolve([]);
         });
       } catch (e) {
         resolve([]);

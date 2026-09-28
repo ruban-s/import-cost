@@ -19,7 +19,9 @@
     "onLanguage:typescript",
     "onLanguage:typescript.tsx",
     "onLanguage:typescript.jsx",
-    "onLanguage:typescriptreact"
+    "onLanguage:typescriptreact",
+    "onLanguage:vue",
+    "onLanguage:svelte"
   ],
   "keywords": [
     "coc.nvim",
@@ -58,7 +60,10 @@
           "enum": [
             "both",
             "minified",
-            "gzipped"
+            "gzipped",
+            "gzip",
+            "brotli",
+            "compressed"
           ],
           "description": "Which bundle size to display"
         },
@@ -93,13 +98,13 @@
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
-    "typescript": "7.0.2"
+    "coc.nvim": "^0.0.82",
+    "typescript": "7.0.2",
+    "vscode-languageserver-protocol": "^3.18.2"
   },
   "dependencies": {
-    "coc.nvim": "^0.0.82",
     "filesize": "^11.0.22",
-    "import-cost-core": "file:../import-cost",
-    "vscode-languageserver-protocol": "^3.18.2"
+    "import-cost-core": "^5.8.0"
   },
   "icon": "images/import-cost-logo.png",
   "galleryBanner": {
